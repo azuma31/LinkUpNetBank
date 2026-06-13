@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>LinkUpNetBank</title>
+    <meta name="theme-color" content="#ffffff">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@500;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+
+    <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+    <script src="banknet-config.js"></script>
+</head>
+<body>
+
+<!-- ===================== ログイン ===================== -->
+<section id="loginScreen" class="screen login-screen">
+    <div class="login-card">
+        <div class="brand">
+            <span class="w-coin w-coin--lg" aria-hidden="true"><span class="w-coin__glyph">W</span></span>
+            <div>
+                <h1 class="brand__name">LinkUp<span>NetBank</span></h1>
+                <p class="brand__tag">ワラット（W）口座を、LinkUp アカウントで。</p>
+            </div>
+        </div>
+        <div class="field">
+            <label for="loginName">LinkUp の名前</label>
+            <input id="loginName" type="text" autocomplete="username" placeholder="例: たろう" maxlength="20">
+        </div>
+        <div class="field">
+            <label for="loginPass">パスワード</label>
+            <input id="loginPass" type="password" autocomplete="current-password" placeholder="LinkUp と同じパスワード">
+        </div>
+        <p id="loginError" class="form-error" hidden></p>
+        <button id="loginBtn" class="btn btn--primary btn--block">ログイン</button>
+        <p class="login-note">LinkUp に登録済みのアカウントでそのまま入れます。<br>新規登録は LinkUp 側で行ってください。</p>
+    </div>
+    <div id="bootOverlay" class="boot-overlay" hidden><div class="spinner"></div></div>
+</section>
+
+<!-- ===================== アプリ本体 ===================== -->
+<section id="appScreen" class="app" hidden>
+
+    <!-- サイドバー（デスクトップ） -->
+    <aside class="sidebar">
+        <div class="sidebar__brand">
+            <span class="w-coin w-coin--sm" aria-hidden="true"><span class="w-coin__glyph">W</span></span>
+            <span class="sidebar__brand-name">LinkUpNetBank</span>
+        </div>
+        <nav class="snav">
+            <button class="snav__item is-active" data-action="home"><i class="fa-solid fa-table-columns"></i><span>ダッシュボード</span></button>
+            <button class="snav__item" data-action="subs"><i class="fa-solid fa-rotate"></i><span>サブスク</span></button>
+            <button class="snav__item" data-action="history"><i class="fa-solid fa-clock-rotate-left"></i><span>取引履歴</span></button>
+            <button class="snav__item js-admin-only" data-action="admin" hidden><i class="fa-solid fa-shield-halved"></i><span>管理</span></button>
+            <button class="snav__item" data-action="settings"><i class="fa-solid fa-gear"></i><span>設定</span></button>
+        </nav>
+        <div class="sidebar__user">
+            <span class="avatar" id="sideAvatar">?</span>
+            <div class="sidebar__user-meta">
+                <span class="sidebar__user-name" id="sideName">—</span>
+                <span class="sidebar__user-uid" id="sideUid"></span>
+            </div>
+            <button class="icon-btn js-logout" title="ログアウト" aria-label="ログアウト"><i class="fa-solid fa-arrow-right-from-bracket"></i></button>
+        </div>
+    </aside>
+
+    <!-- コンテンツ -->
+    <div class="content">
+        <header class="topbar">
+            <div class="topbar__brand">
+                <span class="w-coin w-coin--sm" aria-hidden="true"><span class="w-coin__glyph">W</span></span>
+                <span>LinkUpNetBank</span>
+            </div>
+            <div class="topbar__actions">
+                <button class="icon-btn" data-action="settings" title="設定" aria-label="設定"><i class="fa-solid fa-gear"></i></button>
+                <button class="icon-btn js-logout" title="ログアウト" aria-label="ログアウト"><i class="fa-solid fa-arrow-right-from-bracket"></i></button>
+            </div>
+        </header>
+
+        <main class="page">
+            <div class="page__head">
+                <h1 class="page__title">ダッシュボード</h1>
+                <p class="page__sub">残高の確認・送金・受け取りができます。</p>
+            </div>
+
+            <!-- 残高サマリー -->
+            <div class="balance-card">
+                <div class="balance-card__row">
+                    <span class="balance-card__label">利用可能残高</span>
+                    <span id="frozenBadge" class="chip chip--warn" hidden><i class="fa-solid fa-snowflake"></i> 凍結中</span>
+                </div>
+                <div class="balance-card__amount">
+                    <span id="balanceValue" class="balance-card__value">—</span>
+                    <span class="balance-card__unit">W</span>
+                </div>
+                <div class="balance-card__meta">
+                    <span class="balance-card__holder" id="ownerName">—</span>
+                    <span class="balance-card__acct">口座番号 <b id="ownerUid"></b></span>
+                </div>
+                <span class="balance-card__mark w-coin w-coin--xl" aria-hidden="true"><span class="w-coin__glyph">W</span></span>
+            </div>
+
+            <!-- 主要アクション -->
+            <div class="actions">
+                <button class="action action--primary" data-action="send">
+                    <span class="action__ic"><i class="fa-solid fa-paper-plane"></i></span>
+                    <span class="action__label">送る</span>
+                </button>
+                <button class="action" data-action="receive">
+                    <span class="action__ic"><i class="fa-solid fa-qrcode"></i></span>
+                    <span class="action__label">受け取る</span>
+                </button>
+                <button class="action" data-action="scan">
+                    <span class="action__ic"><i class="fa-solid fa-camera"></i></span>
+                    <span class="action__label">読み取る</span>
+                </button>
+            </div>
+
+            <!-- 最近の取引 -->
+            <section class="panel">
+                <div class="panel__head">
+                    <h2 class="panel__title">最近の取引</h2>
+                    <button class="link-btn" data-action="history">すべて見る</button>
+                </div>
+                <ul id="recentList" class="tx-list"></ul>
+                <p id="recentEmpty" class="empty" hidden>まだ取引はありません。<br>「受け取る」の QR を見せて、最初の W を受け取りましょう。</p>
+            </section>
+        </main>
+    </div>
+
+    <!-- ボトムタブ（モバイル） -->
+    <nav class="tabbar">
+        <button class="tabbar__item is-active" data-action="home"><i class="fa-solid fa-house"></i><span>ホーム</span></button>
+        <button class="tabbar__item" data-action="send"><i class="fa-solid fa-paper-plane"></i><span>送る</span></button>
+        <button class="tabbar__item" data-action="subs"><i class="fa-solid fa-rotate"></i><span>サブスク</span></button>
+        <button class="tabbar__item" data-action="history"><i class="fa-solid fa-clock-rotate-left"></i><span>履歴</span></button>
+        <button class="tabbar__item js-admin-only" data-action="admin" hidden><i class="fa-solid fa-shield-halved"></i><span>管理</span></button>
+    </nav>
+</section>
+
+<!-- ===================== 送金 ===================== -->
+<div id="sendModal" class="modal" hidden>
+    <div class="modal__panel">
+        <div class="modal__head"><h3>送る</h3><button class="icon-btn modal__close" data-close><i class="fa-solid fa-xmark"></i></button></div>
+        <div class="modal__body">
+            <div class="field">
+                <label for="sendTo">送り先（LinkUp の名前）</label>
+                <input id="sendTo" type="text" data-suggest-users="true" placeholder="相手の名前" maxlength="20" autocomplete="off">
+                <p id="sendToInfo" class="field-hint"></p>
+            </div>
+            <div class="field">
+                <label for="sendAmount">金額（W）</label>
+                <input id="sendAmount" type="number" inputmode="numeric" min="1" step="1" placeholder="0">
+            </div>
+            <div class="field">
+                <label for="sendMemo">メモ（任意）</label>
+                <input id="sendMemo" type="text" placeholder="例: ジュース代" maxlength="200">
+            </div>
+            <p id="sendError" class="form-error" hidden></p>
+        </div>
+        <div class="modal__foot">
+            <button class="btn btn--ghost" data-close>やめる</button>
+            <button id="sendConfirmBtn" class="btn btn--primary">送金する</button>
+        </div>
+    </div>
+</div>
+
+<!-- ===================== 受け取る ===================== -->
+<div id="receiveModal" class="modal" hidden>
+    <div class="modal__panel">
+        <div class="modal__head"><h3>受け取る</h3><button class="icon-btn modal__close" data-close><i class="fa-solid fa-xmark"></i></button></div>
+        <div class="modal__body modal__body--center">
+            <p class="muted-note">このコードを相手に読み取ってもらうと、あなた宛に送金できます。</p>
+            <div id="receiveQr" class="qr-box"></div>
+            <div class="invoice">
+                <label for="invoiceAmount">金額を指定して請求（任意）</label>
+                <div class="invoice__row">
+                    <input id="invoiceAmount" type="number" inputmode="numeric" min="1" step="1" placeholder="金額 W">
+                    <button id="invoiceApply" class="btn btn--small btn--dark">反映</button>
+                </div>
+            </div>
+            <button id="copyPayLink" class="link-btn"><i class="fa-regular fa-copy"></i> 支払いリンクをコピー</button>
+        </div>
+    </div>
+</div>
+
+<!-- ===================== 読み取る ===================== -->
+<div id="scanModal" class="modal" hidden>
+    <div class="modal__panel">
+        <div class="modal__head"><h3>QR を読み取る</h3><button class="icon-btn modal__close" data-close><i class="fa-solid fa-xmark"></i></button></div>
+        <div class="modal__body modal__body--center">
+            <div id="scanRegion" class="scan-region"></div>
+            <p id="scanStatus" class="field-hint">カメラを起動しています…</p>
+            <div class="scan-fallback">
+                <label for="scanPaste">読めないときは、支払いリンクを貼り付け</label>
+                <div class="invoice__row">
+                    <input id="scanPaste" type="text" placeholder="https://…?to=…">
+                    <button id="scanPasteGo" class="btn btn--small btn--dark">開く</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===================== 履歴 ===================== -->
+<div id="historyModal" class="modal" hidden>
+    <div class="modal__panel modal__panel--tall">
+        <div class="modal__head"><h3>取引履歴</h3><button class="icon-btn modal__close" data-close><i class="fa-solid fa-xmark"></i></button></div>
+        <div class="modal__body">
+            <ul id="historyList" class="tx-list"></ul>
+            <p id="historyEmpty" class="empty" hidden>取引はまだありません。</p>
+        </div>
+    </div>
+</div>
+
+<!-- ===================== 管理 ===================== -->
+<div id="adminModal" class="modal" hidden>
+    <div class="modal__panel modal__panel--tall">
+        <div class="modal__head"><h3><i class="fa-solid fa-shield-halved"></i> 管理</h3><button class="icon-btn modal__close" data-close><i class="fa-solid fa-xmark"></i></button></div>
+        <div class="modal__body">
+            <div class="admin-block">
+                <h4 class="admin-block__title">W を発行</h4>
+                <div class="field">
+                    <label for="mintTo">発行先（LinkUp の名前）</label>
+                    <input id="mintTo" type="text" data-suggest-users="true" placeholder="相手の名前" maxlength="20" autocomplete="off">
+                </div>
+                <div class="grid-2">
+                    <div class="field">
+                        <label for="mintAmount">金額（W）</label>
+                        <input id="mintAmount" type="number" inputmode="numeric" min="1" step="1" placeholder="0">
+                    </div>
+                    <div class="field">
+                        <label for="mintMemo">メモ（任意）</label>
+                        <input id="mintMemo" type="text" placeholder="例: 入部ボーナス" maxlength="200">
+                    </div>
+                </div>
+                <p id="mintError" class="form-error" hidden></p>
+                <button id="mintBtn" class="btn btn--primary btn--block">発行する</button>
+            </div>
+
+            <div class="admin-block">
+                <h4 class="admin-block__title">口座一覧</h4>
+                <ul id="adminAccountList" class="acct-list"></ul>
+                <p id="adminAccountEmpty" class="empty" hidden>口座がまだありません。</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===================== サブスクリプション ===================== -->
+<div id="subsModal" class="modal" hidden>
+    <div class="modal__panel modal__panel--tall">
+        <div class="modal__head">
+            <h3>サブスクリプション</h3>
+            <button class="icon-btn modal__close" data-close><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="modal__body">
+            <p class="muted-note" style="text-align:left">サブスクの開始は各サービスのアプリで行います。ここでは内容の確認と停止ができます。停止しても、すでに支払い済みの期間は期限まで利用できます。</p>
+
+            <div class="sub-section">
+                <h4 class="sub-section__title">ご利用中のサブスク</h4>
+                <ul id="subPayingList" class="sub-list"></ul>
+                <p id="subPayingEmpty" class="empty" hidden>利用中のサブスクはありません。</p>
+            </div>
+
+            <div class="sub-section" id="subReceivingWrap" hidden>
+                <h4 class="sub-section__title">受け取り中（あなたが提供）</h4>
+                <ul id="subReceivingList" class="sub-list"></ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===================== 設定 ===================== -->
+<div id="settingsModal" class="modal" hidden>
+    <div class="modal__panel">
+        <div class="modal__head">
+            <h3>設定</h3>
+            <button class="icon-btn modal__close" data-close><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="modal__body">
+            <div class="setting">
+                <div class="setting__text">
+                    <span class="setting__label">自動ログイン</span>
+                    <span class="setting__desc">このアプリを次回開いたとき、自動でログインします（LinkUp 本体の設定とは別です）。</span>
+                </div>
+                <label class="switch"><input type="checkbox" id="setAutoLogin"><span class="switch__track"></span></label>
+            </div>
+            <div class="setting">
+                <div class="setting__text">
+                    <span class="setting__label">送金前に確認する</span>
+                    <span class="setting__desc">送金・支払いの前に確認ダイアログを表示します。</span>
+                </div>
+                <label class="switch"><input type="checkbox" id="setConfirmSend"><span class="switch__track"></span></label>
+            </div>
+
+            <div class="setting-account">
+                <span class="setting__label">ログイン中</span>
+                <div class="setting-account__row">
+                    <span class="avatar" id="setAvatar">?</span>
+                    <div>
+                        <div id="setName" class="setting-account__name">—</div>
+                        <div id="setUid" class="setting-account__uid"></div>
+                    </div>
+                    <button class="btn btn--ghost btn--small js-logout">ログアウト</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 確認 -->
+<div id="confirmModal" class="modal" hidden>
+    <div class="modal__panel modal__panel--narrow">
+        <div class="modal__body"><p id="confirmText" class="confirm-text"></p></div>
+        <div class="modal__foot">
+            <button class="btn btn--ghost" id="confirmCancel">やめる</button>
+            <button class="btn btn--primary" id="confirmOk">OK</button>
+        </div>
+    </div>
+</div>
+
+<div id="toastStack" class="toast-stack" aria-live="polite"></div>
+<div id="userSuggestionPopup" class="suggest-popup" style="display:none"></div>
+
+<script src="banknet.js"></script>
+<script src="main.js"></script>
+</body>
+</html>
