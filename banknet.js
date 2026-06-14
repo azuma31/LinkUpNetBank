@@ -16,6 +16,8 @@ class LinkUpNetBank {
         this._receiveQr = null;
         this.settings = this._loadSettings();
         this.subsCache = [];
+        this._accounts = this._loadAccounts();
+        this._adding = false;
 
         this._cacheEls();
         this._bindStaticEvents();
@@ -86,6 +88,8 @@ class LinkUpNetBank {
         this.els = {
             loginScreen: id('loginScreen'), appScreen: id('appScreen'), bootOverlay: id('bootOverlay'),
             loginName: id('loginName'), loginPass: id('loginPass'), loginBtn: id('loginBtn'), loginError: id('loginError'),
+            loginBack: id('loginBack'), topAvatar: id('topAvatar'),
+            accountModal: id('accountModal'), accountList: id('accountList'), addAccountBtn: id('addAccountBtn'),
             balanceValue: id('balanceValue'), frozenBadge: id('frozenBadge'),
             ownerName: id('ownerName'), ownerUid: id('ownerUid'),
             recentList: id('recentList'), recentEmpty: id('recentEmpty'),
@@ -106,6 +110,8 @@ class LinkUpNetBank {
             adminModal: id('adminModal'), mintTo: id('mintTo'), mintAmount: id('mintAmount'), mintMemo: id('mintMemo'),
             mintError: id('mintError'), mintBtn: id('mintBtn'),
             adminAccountList: id('adminAccountList'), adminAccountEmpty: id('adminAccountEmpty'),
+            adminEditModal: id('adminEditModal'), editName: id('editName'), editCurrent: id('editCurrent'),
+            editBalance: id('editBalance'), editError: id('editError'), editSaveBtn: id('editSaveBtn'),
             // subscriptions（確認・停止のみ）
             subsModal: id('subsModal'),
             subPayingList: id('subPayingList'), subPayingEmpty: id('subPayingEmpty'),
@@ -121,7 +127,10 @@ class LinkUpNetBank {
 
     _bindStaticEvents() {
         this.els.loginBtn.addEventListener('click', () => this._onLogin());
+        this.els.loginName.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); this.els.loginPass.focus(); } });
         this.els.loginPass.addEventListener('keydown', e => { if (e.key === 'Enter') this._onLogin(); });
+        this.els.loginBack.addEventListener('click', () => this._cancelAdd());
+        this.els.addAccountBtn.addEventListener('click', () => this._addAccountFlow());
         document.querySelectorAll('.js-logout').forEach(b => b.addEventListener('click', () => this._logout()));
 
         // クイック操作（メイン + 「すべて見る」）
@@ -131,8 +140,13 @@ class LinkUpNetBank {
 
         // モーダルを閉じる
         document.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', () => this._closeModals()));
+        document.querySelectorAll('[data-close-edit]').forEach(b => b.addEventListener('click', () => this._closeEditModal()));
         document.querySelectorAll('.modal').forEach(m => {
-            m.addEventListener('click', e => { if (e.target === m) this._closeModals(); });
+            m.addEventListener('click', e => {
+                if (e.target !== m) return;
+                if (m.id === 'adminEditModal') this._closeEditModal();
+                else this._closeModals();
+            });
         });
 
         // 送金
@@ -153,6 +167,7 @@ class LinkUpNetBank {
 
         // 管理
         this.els.mintBtn.addEventListener('click', () => this._onMint());
+        this.els.editSaveBtn.addEventListener('click', () => this._onSaveBalance());
 
         // 設定
         this.els.setAutoLogin.addEventListener('change', () => {
@@ -172,6 +187,7 @@ class LinkUpNetBank {
         else if (a === 'admin') { this._setActiveNav('admin'); this._openAdmin(); }
         else if (a === 'subs') { this._setActiveNav('subs'); this._openSubs(); }
         else if (a === 'settings') { this._setActiveNav('settings'); this._openSettings(); }
+        else if (a === 'accounts') this._openAccounts();
     }
 
     _setActiveNav(action) {
@@ -219,6 +235,8 @@ class LinkUpNetBank {
 
     _saveSession() {
         localStorage.setItem('lunb_session', JSON.stringify({ name: this.name, uid: this.uid }));
+        localStorage.setItem('lunb_active', this.uid);
+        this._upsertAccount(this.name, this.uid);
     }
 
     async _restore() {
@@ -250,12 +268,119 @@ class LinkUpNetBank {
         return true;
     }
 
+    _detachUserWatchers() {
+        if (this.uid) {
+            this.bankDb.ref('accounts/' + this.uid).off();
+            this.bankDb.ref('userLedger/' + this.uid).off();
+        }
+    }
+
     _logout() {
-        localStorage.removeItem('lunb_session');
         if (this._subTimer) clearInterval(this._subTimer);
-        if (this.uid) this.bankDb.ref('accounts/' + this.uid).off();
-        if (this.uid) this.bankDb.ref('userLedger/' + this.uid).off();
+        this._detachUserWatchers();
+        // 現在のアカウントを保存リストから外す
+        const list = this._loadAccounts().filter(a => a.uid !== this.uid);
+        localStorage.setItem('lunb_accounts', JSON.stringify(list));
+        if (list.length > 0) {
+            localStorage.setItem('lunb_active', list[0].uid);
+            localStorage.setItem('lunb_session', JSON.stringify(list[0]));
+        } else {
+            localStorage.removeItem('lunb_active');
+            localStorage.removeItem('lunb_session');
+        }
         location.reload();
+    }
+
+    // ----- 複数アカウント -----
+    _loadAccounts() {
+        try {
+            const l = JSON.parse(localStorage.getItem('lunb_accounts') || '[]');
+            this._accounts = Array.isArray(l) ? l.filter(a => a && a.uid) : [];
+        } catch { this._accounts = []; }
+        return this._accounts;
+    }
+    _upsertAccount(name, uid) {
+        const list = this._loadAccounts();
+        const i = list.findIndex(a => a.uid === uid);
+        if (i >= 0) list[i] = { name, uid }; else list.push({ name, uid });
+        this._accounts = list;
+        localStorage.setItem('lunb_accounts', JSON.stringify(list));
+    }
+
+    _openAccounts() {
+        const list = this._loadAccounts();
+        this.els.accountList.innerHTML = list.map(a => {
+            const active = a.uid === this.uid;
+            const letter = this._esc((a.name || '?').slice(0, 1).toUpperCase());
+            const right = active
+                ? '<i class="fa-solid fa-circle-check acctsw__check"></i>'
+                : `<button class="acctsw__remove" data-remove="${this._esc(a.uid)}" title="削除"><i class="fa-solid fa-xmark"></i></button>`;
+            return `<li class="acctsw ${active ? 'is-active' : ''}" data-switch="${this._esc(a.uid)}">
+                <span class="avatar">${letter}</span>
+                <div class="acctsw__meta">
+                    <span class="acctsw__name">${this._esc(a.name)}</span>
+                    <span class="acctsw__uid">#${this._esc(a.uid)}</span>
+                </div>
+                ${right}
+            </li>`;
+        }).join('');
+        this.els.accountList.querySelectorAll('.acctsw__remove').forEach(b => {
+            b.addEventListener('click', e => { e.stopPropagation(); this._removeAccount(b.dataset.remove); });
+        });
+        this.els.accountList.querySelectorAll('[data-switch]').forEach(li => {
+            li.addEventListener('click', () => this._switchAccount(li.dataset.switch));
+        });
+        this._show(this.els.accountModal);
+    }
+
+    _removeAccount(uid) {
+        const list = this._loadAccounts().filter(a => a.uid !== uid);
+        this._accounts = list;
+        localStorage.setItem('lunb_accounts', JSON.stringify(list));
+        this._openAccounts(); // 再描画
+    }
+
+    async _switchAccount(uid) {
+        if (uid === this.uid) { this._closeModals(); return; }
+        const acc = (this._loadAccounts()).find(a => a.uid === uid);
+        if (!acc) return;
+        let name = acc.name;
+        try { const r = await this._resolveByUid(uid); if (r && r.name) name = r.name; } catch (_) {}
+
+        this._detachUserWatchers();
+        if (this._subTimer) clearInterval(this._subTimer);
+        this.name = name;
+        this.uid = uid;
+        this._upsertAccount(name, uid);
+        localStorage.setItem('lunb_active', uid);
+        localStorage.setItem('lunb_session', JSON.stringify({ name, uid }));
+        try { await this._ensureBankAccount(uid, name); } catch (_) {}
+        this._closeModals();
+        this._enterApp();
+        this._toast(`${name} に切り替えました`, 'success');
+    }
+
+    // 別アカウントを追加（現在のアカウントは保持したままログイン画面へ）
+    _addAccountFlow() {
+        this._closeModals();
+        this._adding = true;
+        this._detachUserWatchers();
+        if (this._subTimer) clearInterval(this._subTimer);
+        this.els.loginName.value = '';
+        this.els.loginPass.value = '';
+        this._hide(this.els.loginError);
+        this.els.appScreen.hidden = true;
+        this.els.loginBack.hidden = false;
+        this._show(this.els.loginScreen);
+        setTimeout(() => this.els.loginName.focus(), 50);
+    }
+
+    // 追加をやめて元のアカウントに戻る
+    _cancelAdd() {
+        this._adding = false;
+        this.els.loginBack.hidden = true;
+        this.els.loginScreen.hidden = true;
+        if (this.uid) this._enterApp();
     }
 
     // =====================================================
@@ -272,18 +397,21 @@ class LinkUpNetBank {
     }
 
     _enterApp() {
+        this._adding = false;
+        if (this.els.loginBack) this.els.loginBack.hidden = true;
         this._show(this.els.appScreen);
         this.els.loginScreen.hidden = true;
         this.els.ownerName.textContent = this.name + ' 様';
         this.els.ownerUid.textContent = '#' + this.uid;
         if (this.els.sideName) this.els.sideName.textContent = this.name;
         if (this.els.sideUid) this.els.sideUid.textContent = '#' + this.uid;
-        if (this.els.sideAvatar) this.els.sideAvatar.textContent = (this.name || '?').slice(0, 1).toUpperCase();
+        const letter = (this.name || '?').slice(0, 1).toUpperCase();
+        if (this.els.sideAvatar) this.els.sideAvatar.textContent = letter;
+        if (this.els.topAvatar) this.els.topAvatar.textContent = letter;
 
-        // 管理者ゲート（サイドバー・タブバー両方）
-        if (this.name === (window.BANK_ADMIN_NAME || '管理者')) {
-            document.querySelectorAll('.js-admin-only').forEach(el => { el.hidden = false; });
-        }
+        // 管理者ゲート（毎回リセットしてから判定：別アカウントへ切り替えても整合）
+        const isAdmin = this.name === (window.BANK_ADMIN_NAME || '管理者');
+        document.querySelectorAll('.js-admin-only').forEach(el => { el.hidden = !isAdmin; });
 
         this._watchAccount();
         this._watchLedger();
@@ -491,27 +619,78 @@ class LinkUpNetBank {
         const rsnap = await this.bankDb.ref('accounts/' + toUid).get();
         if (rsnap.exists() && rsnap.val().frozen) throw new Error('相手の口座は凍結されています。');
 
-        const moved = await this._moveFunds(this.uid, toUid, amount);
-        if (!moved) throw new Error('送金できませんでした（残高不足または競合）。もう一度お試しください。');
+        const moved = await this._moveFunds(this.uid, toUid, amount, toName);
+        if (!moved) throw new Error('一時的に処理が競合しました。もう一度お試しください。');
 
         await this._writeLedger({
             type: 'transfer', amount, fromUid: this.uid, fromName: this.name, toUid, toName, memo, ts: Date.now()
         }, this.uid, toUid);
     }
 
-    // 残高を原子的に移動（マイナス・凍結を禁止）。成功=true。
-    async _moveFunds(fromUid, toUid, amount) {
-        const res = await this.bankDb.ref('accounts').transaction(accts => {
-            if (!accts) return;
-            const f = accts[fromUid], t = accts[toUid];
-            if (!f || !t) return;
-            if (f.frozen || t.frozen) return;
-            if (typeof f.balance !== 'number' || f.balance < amount) return;
-            f.balance = f.balance - amount;
-            t.balance = (t.balance || 0) + amount;
-            return accts;
+    // 対象 ref が同期されるまで待つ（最大5秒）。未キャッシュによる transaction の null 初回中止を防ぐ。
+    _waitValue(ref) {
+        return new Promise(res => {
+            let done = false;
+            const t = setTimeout(() => { if (!done) { done = true; res(); } }, 5000);
+            ref.once('value', () => { if (!done) { done = true; clearTimeout(t); res(); } });
         });
-        return res.committed;
+    }
+
+    // 残高を移動（マイナス・凍結を禁止）。成功=true。失敗理由は例外で返す。
+    async _moveFunds(fromUid, toUid, amount, toName) {
+        const fromRef = this.bankDb.ref('accounts/' + fromUid);
+        const toRef = this.bankDb.ref('accounts/' + toUid);
+        // 一時リスナーで両口座を同期ツリーに載せる（自分以外の口座でも null 初回中止を防ぐ）
+        const fcb = fromRef.on('value', () => {});
+        const tcb = toRef.on('value', () => {});
+        try {
+            await this._waitValue(fromRef);
+            await this._waitValue(toRef);
+
+            // 1) 送金元から引く
+            let reason = null, debit;
+            try {
+                debit = await fromRef.transaction(acc => {
+                    if (!acc) { reason = 'no_account'; return; }
+                    if (acc.frozen) { reason = 'frozen_from'; return; }
+                    if (typeof acc.balance !== 'number' || acc.balance < amount) { reason = 'insufficient'; return; }
+                    acc.balance = acc.balance - amount;
+                    return acc;
+                });
+            } catch (e) {
+                throw new Error('権限エラーで送金できませんでした。Authentication の「匿名」が有効か確認してください。');
+            }
+            if (!debit.committed) {
+                if (reason === 'frozen_from') throw new Error('あなたの口座は凍結されています。');
+                if (reason === 'insufficient') throw new Error('残高が足りません。');
+                if (reason === 'no_account') throw new Error('あなたの口座が見つかりませんでした。');
+                return false; // 競合
+            }
+
+            // 2) 送金先へ足す（null＝未キャッシュ/未作成でも初期化して作成）
+            let credit;
+            try {
+                credit = await toRef.transaction(acc => {
+                    if (acc) {
+                        if (acc.frozen) return; // 相手凍結 → 中止して返金
+                        acc.balance = (acc.balance || 0) + amount;
+                        return acc;
+                    }
+                    return { uid: toUid, name: toName || toUid, balance: amount, frozen: false, createdAt: Date.now() };
+                });
+            } catch (e) {
+                credit = { committed: false };
+            }
+            if (!credit.committed) {
+                // 返金（送金元へ戻す）
+                try { await fromRef.child('balance').transaction(b => (typeof b === 'number' ? b + amount : amount)); } catch (_) {}
+                throw new Error('相手の口座へ反映できませんでした。取り消しました。');
+            }
+            return true;
+        } finally {
+            fromRef.off('value', fcb);
+            toRef.off('value', tcb);
+        }
     }
 
     async _writeLedger(entry, fromUid, toUid) {
@@ -652,10 +831,13 @@ class LinkUpNetBank {
     _txRow(t) {
         const incoming = t.dir === 'in';
         const mint = t.type === 'mint';
-        const icCls = mint ? 'mint' : (incoming ? 'in' : 'out');
-        const icon = mint ? 'fa-coins' : (incoming ? 'fa-arrow-down' : 'fa-arrow-up');
+        const adjust = t.type === 'adjust';
+        const special = mint || adjust;
+        const icCls = special ? 'mint' : (incoming ? 'in' : 'out');
+        const icon = adjust ? 'fa-sliders' : (mint ? 'fa-coins' : (incoming ? 'fa-arrow-down' : 'fa-arrow-up'));
         let who;
         if (mint) who = '発行' + (t.by ? '（' + this._esc(t.by) + '）' : '');
+        else if (adjust) who = '残高調整' + (t.by ? '（' + this._esc(t.by) + '）' : '');
         else if (incoming) who = this._esc(t.fromName || '不明') + ' から';
         else who = this._esc(t.toName || '不明') + ' へ';
         const sign = incoming ? '+' : '−';
@@ -687,8 +869,9 @@ class LinkUpNetBank {
     _watchAdminAccounts() {
         this.bankDb.ref('accounts').on('value', snap => {
             const list = [];
-            snap.forEach(ch => list.push(ch.val()));
+            snap.forEach(ch => { const v = ch.val(); if (v && typeof v === 'object' && v.uid) list.push(v); });
             list.sort((a, b) => (b.balance || 0) - (a.balance || 0));
+            this._adminAccounts = list;
             this.els.adminAccountEmpty.hidden = list.length > 0;
             this.els.adminAccountList.innerHTML = list.map(a => `
                 <li class="acct ${a.frozen ? 'acct--frozen' : ''}">
@@ -696,14 +879,76 @@ class LinkUpNetBank {
                         <div class="acct__name">${this._esc(a.name)}</div>
                         <div class="acct__bal">${this._fmt(Math.floor(a.balance || 0))} W ・ #${this._esc(a.uid)}</div>
                     </div>
-                    <button class="acct__freeze" data-uid="${this._esc(a.uid)}" data-frozen="${a.frozen ? 1 : 0}">
-                        ${a.frozen ? '解除' : '凍結'}
-                    </button>
+                    <div class="acct__actions">
+                        <button class="acct__btn" data-edit="${this._esc(a.uid)}">残高</button>
+                        <button class="acct__freeze" data-uid="${this._esc(a.uid)}" data-frozen="${a.frozen ? 1 : 0}">
+                            ${a.frozen ? '解除' : '凍結'}
+                        </button>
+                    </div>
                 </li>`).join('');
             this.els.adminAccountList.querySelectorAll('.acct__freeze').forEach(b => {
                 b.addEventListener('click', () => this._toggleFreeze(b.dataset.uid, b.dataset.frozen === '1'));
             });
+            this.els.adminAccountList.querySelectorAll('[data-edit]').forEach(b => {
+                b.addEventListener('click', () => this._openEditBalance(b.dataset.edit));
+            });
         });
+    }
+
+    _openEditBalance(uid) {
+        const acc = (this._adminAccounts || []).find(a => a.uid === uid);
+        if (!acc) return;
+        this._editUid = uid;
+        const cur = Math.floor(acc.balance || 0);
+        this.els.editName.textContent = acc.name || uid;
+        this.els.editCurrent.textContent = this._fmt(cur);
+        this.els.editBalance.value = cur;
+        this._hide(this.els.editError);
+        this._show(this.els.adminEditModal);
+        setTimeout(() => { this.els.editBalance.focus(); this.els.editBalance.select(); }, 50);
+    }
+
+    _closeEditModal() {
+        this.els.adminEditModal.hidden = true;
+        // 管理モーダルは開いたままなので背景スクロールロックは維持
+    }
+
+    async _onSaveBalance() {
+        this._hide(this.els.editError);
+        const uid = this._editUid;
+        const acc = (this._adminAccounts || []).find(a => a.uid === uid);
+        if (!acc) return this._showError(this.els.editError, '口座が見つかりません。');
+        const newBal = this._intOrNull(this.els.editBalance.value);
+        if (newBal === null || newBal < 0) return this._showError(this.els.editError, '0 以上の整数を入力してください。');
+        const cur = Math.floor(acc.balance || 0);
+        if (newBal === cur) return this._closeEditModal();
+
+        const ok = await this._confirm(`${acc.name} さんの残高を ${this._fmt(cur)} → ${this._fmt(newBal)} W に変更しますか？`);
+        if (!ok) return;
+
+        this.els.editSaveBtn.disabled = true;
+        const ref = this.bankDb.ref('accounts/' + uid);
+        const cb = ref.on('value', () => {});
+        try {
+            await this._waitValue(ref);
+            const res = await ref.transaction(a => { if (!a) return; a.balance = newBal; return a; });
+            if (!res.committed) throw new Error('変更できませんでした。もう一度お試しください。');
+
+            const delta = newBal - cur;
+            const ts = Date.now();
+            if (delta > 0) {
+                await this._writeLedger({ type: 'adjust', amount: delta, toUid: uid, toName: acc.name, by: this.name, memo: '管理者による残高調整', ts }, null, uid);
+            } else {
+                await this._writeLedger({ type: 'adjust', amount: -delta, fromUid: uid, fromName: acc.name, by: this.name, memo: '管理者による残高調整', ts }, uid, null);
+            }
+            this._closeEditModal();
+            this._toast(`${acc.name} さんの残高を ${this._fmt(newBal)} W に変更しました`, 'success');
+        } catch (e) {
+            this._showError(this.els.editError, e.message || '変更できませんでした。');
+        } finally {
+            this.els.editSaveBtn.disabled = false;
+            ref.off('value', cb);
+        }
     }
 
     async _onMint() {
@@ -721,12 +966,14 @@ class LinkUpNetBank {
             const ok = await this._confirm(`${r.name} さんに ${this._fmt(amount)} W を発行しますか？`);
             if (!ok) return;
             await this._ensureBankAccount(r.uid, r.name);
-            const res = await this.bankDb.ref('accounts').transaction(accts => {
-                if (!accts || !accts[r.uid]) return;
-                accts[r.uid].balance = (accts[r.uid].balance || 0) + amount;
-                return accts;
+            const acctRef = this.bankDb.ref('accounts/' + r.uid);
+            try { await acctRef.get(); } catch (_) {}
+            const res = await acctRef.transaction(acc => {
+                if (!acc) return;
+                acc.balance = (acc.balance || 0) + amount;
+                return acc;
             });
-            if (!res.committed) throw new Error('発行できませんでした。');
+            if (!res.committed) throw new Error('発行できませんでした。もう一度お試しください。');
             await this._writeLedger(
                 { type: 'mint', amount, toUid: r.uid, toName: r.name, by: this.name, memo, ts: Date.now() },
                 null, r.uid
@@ -796,7 +1043,7 @@ class LinkUpNetBank {
     _watchSubs() {
         this.bankDb.ref('subscriptions').on('value', snap => {
             const all = [];
-            snap.forEach(ch => all.push(ch.val()));
+            snap.forEach(ch => { all.push(ch.val()); });
             this.subsCache = all;
             this._renderSubs();
         });
@@ -907,7 +1154,9 @@ class LinkUpNetBank {
 
         try {
             await this._ensureBankAccount(claimed.payeeUid, claimed.payeeName);
-            const moved = await this._moveFunds(claimed.payerUid, claimed.payeeUid, claimed.amount);
+            let moved = false;
+            try { moved = await this._moveFunds(claimed.payerUid, claimed.payeeUid, claimed.amount, claimed.payeeName); }
+            catch (_) { moved = false; }
             if (moved) {
                 await ref.update({
                     nextChargeAt: this._advance(dueAt, claimed.interval),
@@ -930,7 +1179,7 @@ class LinkUpNetBank {
                 }
             }
         } catch (e) {
-            await ref.update({ lockAt: null });
+            try { await ref.update({ lockAt: null }); } catch (_) {}
         }
     }
 

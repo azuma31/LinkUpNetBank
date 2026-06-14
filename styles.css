@@ -420,3 +420,51 @@ b { font-weight: 600; }
 .suggest-name mark { background: var(--gold-bg); color: var(--gold-2); padding: 0 2px; border-radius: 3px; font-weight: 600; }
 .suggest-tag { flex: none; font-size: .66rem; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--credit-bg); color: var(--credit); }
 .suggest-empty { padding: 14px 12px; text-align: center; color: var(--faint); font-size: .85rem; }
+
+/* 管理: 口座行のアクション（残高変更 / 凍結） */
+.acct__actions { display: flex; gap: 8px; flex: none; }
+.acct__btn {
+    background: var(--ink); color: #fff; border: 1px solid var(--ink);
+    border-radius: 999px; padding: 6px 13px; font: inherit; font-size: .78rem; font-weight: 600; cursor: pointer;
+}
+.acct__btn:hover { background: #000; }
+.edit-target { color: var(--muted); font-size: .9rem; margin-bottom: 16px; }
+.edit-target b { color: var(--ink); font-weight: 600; }
+
+/* =====================================================
+   複数アカウント切り替え
+   ===================================================== */
+.login-back {
+    background: none; border: none; color: var(--muted); font: inherit; font-size: .85rem;
+    font-weight: 600; cursor: pointer; padding: 0 0 14px; display: inline-flex; align-items: center; gap: 6px;
+}
+.login-back:hover { color: var(--ink); }
+
+.sidebar__user-btn {
+    flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px;
+    background: none; border: none; cursor: pointer; padding: 6px; border-radius: 10px; text-align: left;
+    transition: background .15s;
+}
+.sidebar__user-btn:hover { background: var(--surface-2); }
+.sidebar__user-caret { color: var(--faint); font-size: .7rem; margin-left: auto; }
+
+.avatar--sm { width: 30px; height: 30px; font-size: .85rem; }
+.avatar-btn { background: none; border: none; cursor: pointer; padding: 0; display: grid; place-items: center; }
+
+.acctsw-list { list-style: none; display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.acctsw {
+    display: flex; align-items: center; gap: 12px; padding: 10px 12px;
+    border: 1px solid var(--line); border-radius: var(--r); cursor: pointer; background: var(--surface);
+    transition: background .12s, border-color .12s;
+}
+.acctsw:hover { background: var(--surface-2); }
+.acctsw.is-active { border-color: var(--ink); background: var(--surface-2); cursor: default; }
+.acctsw__meta { flex: 1; min-width: 0; }
+.acctsw__name { display: block; font-weight: 600; font-size: .92rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.acctsw__uid { display: block; font-family: var(--num); font-size: .72rem; color: var(--faint); }
+.acctsw__check { color: var(--ink); font-size: 1.05rem; flex: none; }
+.acctsw__remove {
+    background: none; border: none; color: var(--faint); cursor: pointer; flex: none;
+    width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center;
+}
+.acctsw__remove:hover { background: var(--debit-bg); color: var(--debit); }

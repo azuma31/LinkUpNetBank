@@ -30,6 +30,7 @@
                 <p class="brand__tag">ワラット（W）口座を、LinkUp アカウントで。</p>
             </div>
         </div>
+        <button id="loginBack" class="login-back" hidden><i class="fa-solid fa-arrow-left"></i> 戻る</button>
         <div class="field">
             <label for="loginName">LinkUp の名前</label>
             <input id="loginName" type="text" autocomplete="username" placeholder="例: たろう" maxlength="20">
@@ -62,11 +63,14 @@
             <button class="snav__item" data-action="settings"><i class="fa-solid fa-gear"></i><span>設定</span></button>
         </nav>
         <div class="sidebar__user">
-            <span class="avatar" id="sideAvatar">?</span>
-            <div class="sidebar__user-meta">
-                <span class="sidebar__user-name" id="sideName">—</span>
-                <span class="sidebar__user-uid" id="sideUid"></span>
-            </div>
+            <button class="sidebar__user-btn" data-action="accounts" title="アカウントを切り替え">
+                <span class="avatar" id="sideAvatar">?</span>
+                <div class="sidebar__user-meta">
+                    <span class="sidebar__user-name" id="sideName">—</span>
+                    <span class="sidebar__user-uid" id="sideUid"></span>
+                </div>
+                <i class="fa-solid fa-chevron-down sidebar__user-caret"></i>
+            </button>
             <button class="icon-btn js-logout" title="ログアウト" aria-label="ログアウト"><i class="fa-solid fa-arrow-right-from-bracket"></i></button>
         </div>
     </aside>
@@ -79,6 +83,7 @@
                 <span>LinkUpNetBank</span>
             </div>
             <div class="topbar__actions">
+                <button class="avatar-btn" data-action="accounts" title="アカウント" aria-label="アカウント"><span class="avatar avatar--sm" id="topAvatar">?</span></button>
                 <button class="icon-btn" data-action="settings" title="設定" aria-label="設定"><i class="fa-solid fa-gear"></i></button>
                 <button class="icon-btn js-logout" title="ログアウト" aria-label="ログアウト"><i class="fa-solid fa-arrow-right-from-bracket"></i></button>
             </div>
@@ -311,7 +316,44 @@
                     </div>
                     <button class="btn btn--ghost btn--small js-logout">ログアウト</button>
                 </div>
+                <button class="btn btn--ghost btn--block btn--small" data-action="accounts" style="margin-top:12px"><i class="fa-solid fa-arrow-right-arrow-left"></i> アカウントを切り替え・追加</button>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- アカウント切り替え -->
+<div id="accountModal" class="modal" hidden>
+    <div class="modal__panel modal__panel--narrow">
+        <div class="modal__head">
+            <h3>アカウント</h3>
+            <button class="icon-btn" data-close><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="modal__body">
+            <ul id="accountList" class="acctsw-list"></ul>
+            <button id="addAccountBtn" class="btn btn--ghost btn--block"><i class="fa-solid fa-plus"></i> 別のアカウントを追加</button>
+        </div>
+    </div>
+</div>
+
+<!-- 残高変更（管理） -->
+<div id="adminEditModal" class="modal" hidden>
+    <div class="modal__panel modal__panel--narrow">
+        <div class="modal__head">
+            <h3>残高を変更</h3>
+            <button class="icon-btn" data-close-edit><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="modal__body">
+            <p class="edit-target"><b id="editName">—</b> ・ 現在 <b id="editCurrent">0</b> W</p>
+            <div class="field">
+                <label for="editBalance">新しい残高（W）</label>
+                <input id="editBalance" type="number" inputmode="numeric" min="0" step="1" placeholder="0">
+            </div>
+            <p id="editError" class="form-error" hidden></p>
+        </div>
+        <div class="modal__foot">
+            <button class="btn btn--ghost" data-close-edit>やめる</button>
+            <button id="editSaveBtn" class="btn btn--primary">変更する</button>
         </div>
     </div>
 </div>
