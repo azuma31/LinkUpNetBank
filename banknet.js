@@ -122,6 +122,28 @@ class LinkUpNetBank {
             // confirm / toast
             confirmModal: id('confirmModal'), confirmText: id('confirmText'), confirmOk: id('confirmOk'), confirmCancel: id('confirmCancel'),
             toastStack: id('toastStack'),
+            // ===== ギャンブル =====
+            gambleModal: id('gambleModal'), gambleHouseInfo: id('gambleHouseInfo'),
+            // QUICKONE
+            quickoneModal: id('quickoneModal'), quickoneCost: id('quickoneCost'), quickoneQty: id('quickoneQty'),
+            quickoneTable: id('quickoneTable'), quickoneResult: id('quickoneResult'), quickonePlay: id('quickonePlay'),
+            quickonePrizeNote: id('quickonePrizeNote'),
+            // ジャンボ（利用者）
+            jumboModal: id('jumboModal'), jumboList: id('jumboList'), jumboEmpty: id('jumboEmpty'),
+            // ジャンボ管理: 一覧 / 残高
+            openJumboCreate: id('openJumboCreate'),
+            adminJumboList: id('adminJumboList'), adminJumboEmpty: id('adminJumboEmpty'),
+            adminHouseBal: id('adminHouseBal'), adminCentralBal: id('adminCentralBal'),
+            adminHouseFund: id('adminHouseFund'), adminCentralFund: id('adminCentralFund'),
+            // ジャンボ作成
+            jumboCreateModal: id('jumboCreateModal'),
+            jcName: id('jcName'), jcDigits: id('jcDigits'), jcPrice: id('jcPrice'),
+            jcPrize1: id('jcPrize1'), jcPrize2: id('jcPrize2'), jcPrize3: id('jcPrize3'),
+            jcError: id('jcError'), jcCreate: id('jcCreate'),
+            // ジャンボ抽選
+            jumboDrawModal: id('jumboDrawModal'), jdTitle: id('jdTitle'), jdHint: id('jdHint'),
+            jdWin1: id('jdWin1'), jdWin2: id('jdWin2'), jdWin3: id('jdWin3'),
+            jdError: id('jdError'), jdConfirm: id('jdConfirm'),
         };
     }
 
@@ -176,6 +198,33 @@ class LinkUpNetBank {
         this.els.setConfirmSend.addEventListener('change', () => {
             this.settings.confirmSend = this.els.setConfirmSend.checked; this._saveSettings();
         });
+
+        // ギャンブル
+        this._bindGambleEvents();
+    }
+
+    _bindGambleEvents() {
+        if (this.els.quickonePlay) this.els.quickonePlay.addEventListener('click', () => this._playQuickone());
+        if (this.els.quickoneQty) {
+            this.els.quickoneQty.addEventListener('input', () => this._updateQuickoneCost());
+            this.els.quickoneQty.addEventListener('blur', () => { this.els.quickoneQty.value = this._quickoneQty(); this._updateQuickoneCost(); });
+        }
+        document.querySelectorAll('.qo-chip').forEach(c => c.addEventListener('click', () => {
+            if (this.els.quickoneQty) { this.els.quickoneQty.value = c.dataset.qty; this._updateQuickoneCost(); }
+        }));
+        if (this.els.openJumboCreate) this.els.openJumboCreate.addEventListener('click', () => this._openJumboCreate());
+        if (this.els.jcCreate) this.els.jcCreate.addEventListener('click', () => this._createJumboDraw());
+        if (this.els.jdConfirm) this.els.jdConfirm.addEventListener('click', () => this._finalizeJumboDraw());
+        if (this.els.adminHouseFund) this.els.adminHouseFund.addEventListener('click', async () => {
+            const h = await this._houseAccount();
+            if (h && (this._adminAccounts || []).some(a => a.uid === h.uid)) this._openEditBalance(h.uid);
+            else this._toast('口座一覧の「残高」、または発行(mint)で資金を追加してください', 'info', 4500);
+        });
+        if (this.els.adminCentralFund) this.els.adminCentralFund.addEventListener('click', async () => {
+            const c = await this._centralAccount();
+            if (c && (this._adminAccounts || []).some(a => a.uid === c.uid)) this._openEditBalance(c.uid);
+            else this._toast('口座一覧の「残高」、または発行(mint)で資金を追加してください', 'info', 4500);
+        });
     }
 
     _action(a) {
@@ -186,6 +235,10 @@ class LinkUpNetBank {
         else if (a === 'history') { this._setActiveNav('history'); this._openHistory(); }
         else if (a === 'admin') { this._setActiveNav('admin'); this._openAdmin(); }
         else if (a === 'subs') { this._setActiveNav('subs'); this._openSubs(); }
+        else if (a === 'gamble') { this._setActiveNav('gamble'); this._openGamble(); }
+        else if (a === 'quickone') this._openQuickone();
+        else if (a === 'jumbo') this._openJumbo();
+        else if (a === 'keiba') this._toast('競馬は準備中です（近日公開）', 'info', 3500);
         else if (a === 'settings') { this._setActiveNav('settings'); this._openSettings(); }
         else if (a === 'accounts') this._openAccounts();
     }
@@ -832,17 +885,25 @@ class LinkUpNetBank {
         const incoming = t.dir === 'in';
         const mint = t.type === 'mint';
         const adjust = t.type === 'adjust';
+        const gamble = t.type === 'quickone' || t.type === 'jumbo';
         const special = mint || adjust;
-        const icCls = special ? 'mint' : (incoming ? 'in' : 'out');
-        const icon = adjust ? 'fa-sliders' : (mint ? 'fa-coins' : (incoming ? 'fa-arrow-down' : 'fa-arrow-up'));
+        // 掛け金（out）は金色、当選（in）は緑。発行/調整は従来どおり金色。
+        const icCls = (special || (gamble && !incoming)) ? 'mint' : (incoming ? 'in' : 'out');
+        const icon = adjust ? 'fa-sliders'
+            : mint ? 'fa-coins'
+            : t.type === 'quickone' ? 'fa-dice'
+            : t.type === 'jumbo' ? 'fa-ticket'
+            : (incoming ? 'fa-arrow-down' : 'fa-arrow-up');
         let who;
         if (mint) who = '発行' + (t.by ? '（' + this._esc(t.by) + '）' : '');
         else if (adjust) who = '残高調整' + (t.by ? '（' + this._esc(t.by) + '）' : '');
+        else if (gamble) who = this._esc(t.memo || (t.type === 'quickone' ? 'QUICKONE' : 'ジャンボ宝くじ'));
         else if (incoming) who = this._esc(t.fromName || '不明') + ' から';
         else who = this._esc(t.toName || '不明') + ' へ';
         const sign = incoming ? '+' : '−';
         const amtCls = incoming ? 'in' : 'out';
-        const meta = [this._time(t.ts), t.memo ? this._esc(t.memo) : ''].filter(Boolean).join(' ・ ');
+        const showMemo = !gamble && t.memo;   // ギャンブルは who に説明が入るので重複回避
+        const meta = [this._time(t.ts), showMemo ? this._esc(t.memo) : ''].filter(Boolean).join(' ・ ');
         return `<li class="tx">
             <span class="tx__ic tx__ic--${icCls}"><i class="fa-solid ${icon}"></i></span>
             <div class="tx__main">
@@ -864,6 +925,8 @@ class LinkUpNetBank {
         this.els.mintTo.value = ''; this.els.mintAmount.value = ''; this.els.mintMemo.value = '';
         this._show(this.els.adminModal);
         this._watchAdminAccounts();
+        this._watchAdminJumbo();
+        this._refreshAdminHouse();
     }
 
     _watchAdminAccounts() {
@@ -1219,7 +1282,7 @@ class LinkUpNetBank {
             m.hidden = true;
         });
         // 管理画面で張った accounts(親) の監視だけ解除。自分の口座 accounts/{uid} の監視には影響しない。
-        if (this.bankDb) { this.bankDb.ref('accounts').off('value'); this.bankDb.ref('subscriptions').off('value'); }
+        if (this.bankDb) { this.bankDb.ref('accounts').off('value'); this.bankDb.ref('subscriptions').off('value'); this.bankDb.ref('jumbo').off('value'); }
         this._stopScan();
         this._hideSuggest();
         document.documentElement.classList.remove('no-scroll');
@@ -1265,6 +1328,596 @@ class LinkUpNetBank {
     _esc(s) {
         return String(s == null ? '' : s).replace(/[&<>"']/g, c =>
             ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    // =====================================================
+    // ギャンブル — 共通（システム口座 / 支払い）
+    // =====================================================
+    // 「宝くじ運営」「中央銀行」は既存のアカウント。名前から実UIDを解決して使う。
+    //  1) LinkUp の名前解決（通常の送金先と同じ経路）
+    //  2) 見つからなければ銀行口座を名前一致でフォールバック検索
+    async _resolveSysAccount(name) {
+        this._sysCache = this._sysCache || {};
+        if (this._sysCache[name] && this._sysCache[name].uid) return this._sysCache[name];
+        let r = null;
+        try { r = await this._resolveByName(name); } catch (_) {}
+        if (r && r.uid) { this._sysCache[name] = { uid: r.uid, name: r.name || name }; return this._sysCache[name]; }
+        try {
+            const snap = await this.bankDb.ref('accounts').get();
+            let found = null;
+            snap.forEach(ch => { const v = ch.val(); if (v && v.uid && v.name === name) found = { uid: v.uid, name: v.name }; });
+            if (found) { this._sysCache[name] = found; return found; }
+        } catch (_) {}
+        return null;
+    }
+    _houseAccount()   { return this._resolveSysAccount(window.BANK_HOUSE_NAME   || '宝くじ運営'); }
+    _centralAccount() { return this._resolveSysAccount(window.BANK_CENTRAL_NAME || '中央銀行'); }
+
+    async _accountBalance(uid) {
+        try { const s = await this.bankDb.ref('accounts/' + uid + '/balance').get(); return Math.floor(s.val() || 0); }
+        catch (_) { return 0; }
+    }
+
+    // 掛け金を「宝くじ運営」口座へ集める（true=成功）
+    //  ※ QUICKONE の購入は履歴に残さない（残高移動のみ。台帳には記録しない）
+    async _collectStake(amount, memo, type) {
+        const h = await this._houseAccount();
+        if (!h) { this._toast('「宝くじ運営」口座が見つかりません。管理者に確認してください。', 'error', 5000); return false; }
+        let moved = false;
+        try { moved = await this._moveFunds(this.uid, h.uid, amount, h.name); } catch (_) { moved = false; }
+        if (!moved) return false;
+        if (type !== 'quickone') {
+            try {
+                await this._writeLedger({ type, amount, fromUid: this.uid, fromName: this.name, toUid: h.uid, toName: h.name, memo, ts: Date.now() }, this.uid, h.uid);
+            } catch (_) {}
+        }
+        return true;
+    }
+
+    // 当選金を「運営 → 不足分のみ中央銀行」から支払う。実際に支払えた額を返す。
+    async _payPrize(toUid, toName, amount, type, memo) {
+        let remaining = Math.floor(amount);
+        const h = await this._houseAccount();
+        if (h) remaining = await this._payFromSource(h, toUid, toName, remaining, type, memo);
+        if (remaining > 0) {
+            const c = await this._centralAccount();
+            if (c) remaining = await this._payFromSource(c, toUid, toName, remaining, type, memo);
+        }
+        return Math.floor(amount) - remaining;
+    }
+
+    async _payFromSource(src, toUid, toName, want, type, memo) {
+        want = Math.floor(want);
+        if (want <= 0) return 0;
+        const bal = await this._accountBalance(src.uid);
+        const pay = Math.min(want, bal);
+        if (pay <= 0) return want;
+        let moved = false;
+        try { moved = await this._moveFunds(src.uid, toUid, pay, toName); } catch (_) { moved = false; }
+        if (!moved) return want;
+        // QUICKONE は購入も当選も履歴に残さない（残高移動のみ）。ジャンボ等は記録する。
+        if (type !== 'quickone') {
+            try {
+                await this._writeLedger({ type, amount: pay, fromUid: src.uid, fromName: src.name, toUid, toName, memo, ts: Date.now() }, src.uid, toUid);
+            } catch (_) {}
+        }
+        return want - pay;
+    }
+
+    _drawWeighted(tiers) {
+        const total = tiers.reduce((s, t) => s + (t.weight || 0), 0);
+        let r = Math.random() * total;
+        for (const t of tiers) { if (r < (t.weight || 0)) return t; r -= (t.weight || 0); }
+        return tiers[tiers.length - 1];
+    }
+
+    _randomDigits(n) {
+        let s = '';
+        for (let i = 0; i < n; i++) s += Math.floor(Math.random() * 10);
+        return s;
+    }
+
+    // =====================================================
+    // ギャンブル — ハブ
+    // =====================================================
+    _openGamble() {
+        this._show(this.els.gambleModal);
+        this._refreshHouseChips();
+    }
+    async _refreshHouseChips() {
+        if (!this.els.gambleHouseInfo) return;
+        try {
+            const h = await this._houseAccount();
+            const c = await this._centralAccount();
+            const hb = h ? await this._accountBalance(h.uid) : 0;
+            const cb = c ? await this._accountBalance(c.uid) : 0;
+            this.els.gambleHouseInfo.textContent = `運営プール ${this._fmt(hb)} W ・ 中央銀行 ${this._fmt(cb)} W`;
+        } catch (_) {}
+    }
+
+    // =====================================================
+    // QUICKONE（スクラッチ式・即抽選）
+    // =====================================================
+    _quickoneCfg() {
+        const def = {
+            cost: 10,
+            tiers: [
+                { label: '1等', mult: 100, weight: 2 },
+                { label: '2等', mult: 10, weight: 20 },
+                { label: '3等', mult: 2, weight: 225 },
+                { label: 'はずれ', mult: 0, weight: 753 }
+            ]
+        };
+        const c = window.BANK_QUICKONE || {};
+        return {
+            cost: (typeof c.cost === 'number' && c.cost > 0) ? c.cost : def.cost,
+            tiers: (Array.isArray(c.tiers) && c.tiers.length) ? c.tiers : def.tiers
+        };
+    }
+
+    _openQuickone() {
+        const cfg = this._quickoneCfg();
+        this.els.quickoneCost.textContent = this._fmt(cfg.cost);
+        this._renderQuickoneTable();
+        this._resetQuickoneStage();
+        this._show(this.els.quickoneModal);
+    }
+
+    // 賞金は「選んだ口数」に応じて表示額を変える（全口当選時の最高額）
+    _renderQuickoneTable() {
+        if (!this.els.quickoneTable) return;
+        const cfg = this._quickoneCfg();
+        const qty = this._quickoneQty();
+        const winners = cfg.tiers.filter(t => t.mult > 0);
+        const total = cfg.tiers.reduce((s, t) => s + (t.weight || 0), 0) || 1;
+        this.els.quickoneTable.innerHTML = winners.map(t => {
+            const prize = cfg.cost * t.mult * qty;
+            const pct = (t.weight || 0) / total * 100;
+            const pctLabel = pct >= 1 ? pct.toFixed(0) : pct.toFixed(1);
+            return `<li class="qo-tier">
+                <span class="qo-tier__rank">${this._esc(t.label)}</span>
+                <span class="qo-tier__mult">${t.mult}倍</span>
+                <span class="qo-tier__prize">${this._fmt(prize)} W</span>
+                <span class="qo-tier__pct">${pctLabel}%</span>
+            </li>`;
+        }).join('');
+        if (this.els.quickonePrizeNote) {
+            this.els.quickonePrizeNote.textContent = qty > 1
+                ? `※ ${qty}口すべて同じ等に当選した場合の最高額です（1口あたり ${this._fmt(cfg.cost)} W × 倍率）`
+                : '';
+        }
+    }
+
+    _quickoneQty() {
+        let n = parseInt(this.els.quickoneQty && this.els.quickoneQty.value, 10);
+        if (!Number.isFinite(n)) n = 1;
+        return Math.max(1, Math.min(1000, n));
+    }
+
+    _updateQuickoneCost() {
+        this._renderQuickoneTable(); // 口数に応じて賞金表も更新
+        if (!this.els.quickonePlay || this.els.quickonePlay.disabled) return;
+        const cfg = this._quickoneCfg();
+        const qty = this._quickoneQty();
+        const total = cfg.cost * qty;
+        const label = qty > 1 ? `${qty}口 ${this._fmt(total)} W` : `${this._fmt(total)} W`;
+        this.els.quickonePlay.innerHTML = this._qoPlayed
+            ? `<i class="fa-solid fa-rotate-right"></i> もう一度（${label}）`
+            : `<i class="fa-solid fa-wand-magic-sparkles"></i> ${label} でけずる`;
+    }
+
+    _resetQuickoneStage() {
+        this._qoPlayed = false;
+        this.els.quickoneResult.className = 'qo-result';
+        this.els.quickoneResult.innerHTML = `<span class="qo-result__idle"><i class="fa-solid fa-ticket"></i> けずってみよう</span>`;
+        this.els.quickonePlay.disabled = false;
+        this._updateQuickoneCost();
+    }
+
+    async _playQuickone() {
+        const cfg = this._quickoneCfg();
+        const cost = cfg.cost;
+        const qty = this._quickoneQty();
+        const totalCost = cost * qty;
+        if (this.els.quickoneQty) this.els.quickoneQty.value = qty; // 範囲を正規化して反映
+        if (!this.account || this.account.frozen) return this._toast('口座が凍結されています', 'error');
+        if ((this.account.balance || 0) < totalCost) return this._toast(`残高が足りません（${this._fmt(totalCost)} W 必要）`, 'error');
+
+        this.els.quickonePlay.disabled = true;
+        this.els.quickoneResult.className = 'qo-result is-spinning';
+        this.els.quickoneResult.innerHTML = `<span class="qo-spin"><i class="fa-solid fa-dice"></i></span>`;
+
+        // 掛け金を一括で回収（履歴には残さない）
+        const staked = await this._collectStake(totalCost, 'QUICKONE 購入', 'quickone');
+        if (!staked) { this._toast('購入処理に失敗しました。もう一度お試しください。', 'error'); this._qoPlayed = false; this._resetQuickoneStage(); return; }
+
+        // qty 回ぶん抽選し、等級ごとに集計
+        const counts = {};       // label -> 当選口数
+        let totalPrize = 0, winCount = 0, lastWinTier = null;
+        for (let i = 0; i < qty; i++) {
+            const tier = this._drawWeighted(cfg.tiers);
+            if (tier.mult > 0) {
+                totalPrize += cost * tier.mult;
+                winCount++;
+                lastWinTier = tier;
+                counts[tier.label] = (counts[tier.label] || 0) + 1;
+            }
+        }
+
+        await new Promise(r => setTimeout(r, 850)); // 演出
+
+        let paid = 0;
+        if (totalPrize > 0) {
+            const memo = qty > 1 ? `QUICKONE 当選（${winCount}口）` : `QUICKONE ${lastWinTier.label} 当選`;
+            paid = await this._payPrize(this.uid, this.name, totalPrize, 'quickone', memo);
+        }
+
+        this._renderQuickoneResult({ qty, totalCost, winCount, paid, totalPrize, counts });
+
+        this._qoPlayed = true;
+        this.els.quickonePlay.disabled = false;
+        this._updateQuickoneCost();
+        this._refreshHouseChips();
+    }
+
+    _renderQuickoneResult({ qty, totalCost, winCount, paid, totalPrize, counts }) {
+        const won = paid > 0;
+        const cfg = this._quickoneCfg();
+
+        if (qty === 1) {
+            if (won) {
+                const label = Object.keys(counts)[0] || '当選';
+                this.els.quickoneResult.className = 'qo-result is-win';
+                this.els.quickoneResult.innerHTML =
+                    `<span class="qo-result__rank">${this._esc(label)} 当選！</span>
+                     <span class="qo-result__amt">+${this._fmt(paid)} W</span>`;
+            } else {
+                this.els.quickoneResult.className = 'qo-result is-lose';
+                this.els.quickoneResult.innerHTML = `<span class="qo-result__rank">はずれ</span><span class="qo-result__sub">また挑戦してね</span>`;
+            }
+        } else {
+            // 複数口: 集計サマリー
+            const order = cfg.tiers.filter(t => t.mult > 0).map(t => t.label);
+            const chips = order.filter(l => counts[l]).map(l => `<span class="qo-bd qo-bd--win">${this._esc(l)} ×${counts[l]}</span>`);
+            chips.push(`<span class="qo-bd">はずれ ×${qty - winCount}</span>`);
+            const net = paid - totalCost;
+            const netLabel = (net >= 0 ? '+' : '−') + this._fmt(Math.abs(net));
+            this.els.quickoneResult.className = won ? 'qo-result is-win' : 'qo-result is-lose';
+            this.els.quickoneResult.innerHTML =
+                `<span class="qo-result__rank">${winCount > 0 ? `当選 ${winCount}口！` : '当選なし'}</span>
+                 <span class="qo-result__amt">払戻 +${this._fmt(paid)} W</span>
+                 <div class="qo-breakdown">${chips.join('')}</div>
+                 <span class="qo-result__sub">${qty}口 ・ 掛け金 ${this._fmt(totalCost)} W ・ 収支 ${netLabel} W</span>`;
+        }
+        if (won && paid < totalPrize) this._toast('運営の残高が不足し、一部のみの支払いです。管理者に連絡してください。', 'error', 5000);
+        else if (won) this._toast(`当選！ +${this._fmt(paid)} W`, 'success', 4000);
+    }
+
+    // =====================================================
+    // ジャンボ宝くじ（番号選択式・管理者開催）— 利用者
+    // =====================================================
+    _openJumbo() {
+        this._show(this.els.jumboModal);
+        this._watchJumbo();
+    }
+
+    _watchJumbo() {
+        this.bankDb.ref('jumbo').on('value', snap => {
+            const list = [];
+            snap.forEach(ch => { const v = ch.val(); if (v) list.push({ ...v, _key: ch.key }); });
+            list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+            this._jumboDraws = list;
+            this._renderJumbo();
+        });
+    }
+
+    async _fetchJumboTickets() {
+        const byDraw = {}; // drawId -> [tickets]
+        try {
+            const snap = await this.bankDb.ref('jumboTickets').get();
+            if (snap.exists()) {
+                snap.forEach(drawCh => {
+                    const arr = [];
+                    drawCh.forEach(tCh => { const t = tCh.val(); if (t) arr.push({ ...t, _key: tCh.key }); });
+                    byDraw[drawCh.key] = arr;
+                });
+            }
+        } catch (_) {}
+        return byDraw;
+    }
+
+    // 当選番号は等ごとに複数指定できる（スペース/カンマ/読点区切り）
+    _parseNums(s) {
+        return String(s == null ? '' : s).split(/[\s,、，]+/).map(x => x.trim()).filter(Boolean);
+    }
+
+    _jumboTier(draw, number) {
+        if (this._parseNums(draw.win1).includes(number)) return 1;
+        if (this._parseNums(draw.win2).includes(number)) return 2;
+        if (this._parseNums(draw.win3).includes(number)) return 3;
+        return 0;
+    }
+
+    async _renderJumbo() {
+        const draws = this._jumboDraws || [];
+        const byDraw = await this._fetchJumboTickets();
+        const idOf = d => d.id || d._key;
+        const mineOf = id => (byDraw[id] || []).filter(t => t.uid === this.uid);
+        // 販売終了でも自分の券があれば表示
+        const visible = draws.filter(d => d.status !== 'closed' || mineOf(idOf(d)).length);
+
+        this.els.jumboEmpty.hidden = visible.length > 0;
+        this.els.jumboList.innerHTML = visible.map(d => this._jumboCard(d, mineOf(idOf(d)), byDraw[idOf(d)] || [])).join('');
+
+        this.els.jumboList.querySelectorAll('[data-buy]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const id = btn.dataset.buy;
+                const draw = (this._jumboDraws || []).find(x => (x.id || x._key) === id);
+                const inp = this.els.jumboList.querySelector(`input[data-num="${id}"]`);
+                if (draw && inp) this._buyJumboTicket(draw, (inp.value || '').trim());
+            });
+        });
+        this.els.jumboList.querySelectorAll('[data-rand]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const id = btn.dataset.rand;
+                const draw = (this._jumboDraws || []).find(x => (x.id || x._key) === id);
+                const inp = this.els.jumboList.querySelector(`input[data-num="${id}"]`);
+                if (draw && inp) inp.value = this._randomDigits(draw.digits);
+            });
+        });
+    }
+
+    _jumboCard(d, my, all) {
+        const id = d.id || d._key;
+        const drawn = d.status === 'drawn';
+        const closed = d.status === 'closed';
+        const open = d.status === 'open';
+
+        const prizes = [1, 2, 3].map(n => ({ n, amt: d['prize' + n] || 0 })).filter(p => p.amt > 0);
+        const prizeRows = prizes.map(p =>
+            `<div class="jb-prize"><span class="jb-prize__rank">${p.n}等</span><b>${this._fmt(p.amt)} W</b>` +
+            (drawn ? `<span class="jb-prize__win">当選 ${this._esc(this._parseNums(d['win' + p.n]).join('・') || '—')}</span>` : '') +
+            `</div>`
+        ).join('');
+
+        let mine = '';
+        if (my.length) {
+            const chips = my.map(t => {
+                if (drawn) {
+                    const tier = this._jumboTier(d, t.number);
+                    if (tier > 0) return `<span class="jb-ticket is-win">${this._esc(t.number)} <b>${tier}等</b></span>`;
+                    return `<span class="jb-ticket is-lose">${this._esc(t.number)}</span>`;
+                }
+                return `<span class="jb-ticket">${this._esc(t.number)}</span>`;
+            }).join('');
+            mine = `<div class="jb-mine"><div class="jb-mine__title">あなたの券（${my.length}）</div><div class="jb-tickets">${chips}</div></div>`;
+        }
+
+        let buy = '';
+        if (open) {
+            buy = `<div class="jb-buy">
+                <input type="text" inputmode="numeric" data-num="${this._esc(id)}" maxlength="${d.digits}" placeholder="${'0'.repeat(d.digits)}" class="jb-num">
+                <button class="btn btn--ghost btn--small" data-rand="${this._esc(id)}">おまかせ</button>
+                <button class="btn btn--primary btn--small" data-buy="${this._esc(id)}">1口 ${this._fmt(d.ticketPrice)} W</button>
+            </div>`;
+        }
+
+        // 当選者一覧（抽選済みのみ・全員が閲覧可）
+        let winners = '';
+        if (drawn) {
+            const wins = (all || [])
+                .map(t => ({ t, tier: this._jumboTier(d, t.number) }))
+                .filter(x => x.tier > 0)
+                .sort((a, b) => a.tier - b.tier);
+            const rows = wins.map(({ t, tier }) =>
+                `<li class="jb-winner">
+                    <span class="jb-winner__rank jb-winner__rank--${tier}">${tier}等</span>
+                    <span class="jb-winner__name">${this._esc(t.name || '不明')}</span>
+                    <span class="jb-winner__num">${this._esc(t.number)}</span>
+                    <span class="jb-winner__prize">${this._fmt(d['prize' + tier] || 0)} W</span>
+                </li>`
+            ).join('');
+            const body = wins.length
+                ? `<ul class="jb-winners">${rows}</ul>`
+                : `<p class="muted-note" style="margin:8px 0 4px">当選者はいませんでした。</p>`;
+            winners = `<details class="jb-details">
+                <summary class="jb-summary"><i class="fa-solid fa-trophy"></i> 当選者を見る（${wins.length}名）</summary>
+                ${body}
+            </details>`;
+        }
+
+        const statusBadge = drawn
+            ? '<span class="badge badge--paused">抽選済み</span>'
+            : closed ? '<span class="badge badge--paused">販売終了</span>'
+            : '<span class="badge badge--active">販売中</span>';
+
+        return `<li class="jb-card">
+            <div class="jb-card__head">
+                <span class="jb-card__name">${this._esc(d.name)}</span>
+                ${statusBadge}
+            </div>
+            <div class="jb-card__meta">${d.digits}桁の番号 ・ 1口 ${this._fmt(d.ticketPrice)} W ・ 販売 ${(all || []).length}口</div>
+            <div class="jb-prizes">${prizeRows || '<span class="muted-note">賞金は未設定です</span>'}</div>
+            ${buy}
+            ${mine}
+            ${winners}
+        </li>`;
+    }
+
+    async _buyJumboTicket(draw, number) {
+        const id = draw.id || draw._key;
+        if (draw.status !== 'open') return this._toast('この宝くじは販売していません', 'error');
+        if (!/^[0-9]+$/.test(number) || number.length !== draw.digits) {
+            return this._toast(`${draw.digits}桁の数字を入力してください`, 'error');
+        }
+        if (!this.account || this.account.frozen) return this._toast('口座が凍結されています', 'error');
+        if ((this.account.balance || 0) < draw.ticketPrice) return this._toast('残高が足りません', 'error');
+
+        const ok = await this._confirm(`「${draw.name}」を番号 ${number} で 1口（${this._fmt(draw.ticketPrice)} W）購入しますか？`);
+        if (!ok) return;
+
+        const tRef = this.bankDb.ref('jumboTickets/' + id).push();
+        const tKey = tRef.key;
+
+        const staked = await this._collectStake(draw.ticketPrice, `${draw.name} 購入(${number})`, 'jumbo');
+        if (!staked) return this._toast('購入に失敗しました', 'error');
+
+        try {
+            await tRef.set({ id: tKey, drawId: id, uid: this.uid, name: this.name, number, ts: Date.now() });
+            this._toast(`購入しました（番号 ${number}）`, 'success');
+            this._renderJumbo();
+        } catch (e) {
+            // 券の発行に失敗 → 掛け金を返金
+            try { const h = await this._houseAccount(); if (h) await this._payFromSource(h, this.uid, this.name, draw.ticketPrice, 'jumbo', `${draw.name} 返金`); } catch (_) {}
+            this._toast('購入に失敗しました。返金しました。', 'error');
+        }
+    }
+
+    // =====================================================
+    // ジャンボ宝くじ — 管理（開催 / 抽選 / 支払い）
+    // =====================================================
+    _watchAdminJumbo() {
+        this.bankDb.ref('jumbo').on('value', snap => {
+            const list = [];
+            snap.forEach(ch => { const v = ch.val(); if (v) list.push({ ...v, _key: ch.key }); });
+            list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+            this._adminJumbo = list;
+            if (!this.els.adminJumboList) return;
+            this.els.adminJumboEmpty.hidden = list.length > 0;
+            this.els.adminJumboList.innerHTML = list.map(d => {
+                const id = d.id || d._key;
+                const drawn = d.status === 'drawn', closed = d.status === 'closed';
+                const statusLabel = drawn ? '抽選済み' : closed ? '販売終了' : '販売中';
+                let actions = '';
+                if (!drawn) {
+                    if (!closed) actions += `<button class="acct__freeze" data-jclose="${this._esc(id)}">販売終了</button>`;
+                    actions += `<button class="acct__btn" data-jdraw="${this._esc(id)}">当選番号を確定</button>`;
+                } else {
+                    actions += `<button class="acct__freeze" data-jview="${this._esc(id)}">当選者を見る</button>`;
+                }
+                return `<li class="acct">
+                    <div class="acct__main">
+                        <div class="acct__name">${this._esc(d.name)} <span class="badge ${(drawn || closed) ? 'badge--paused' : 'badge--active'}">${statusLabel}</span></div>
+                        <div class="acct__bal">${d.digits}桁 ・ 1口 ${this._fmt(d.ticketPrice)} W</div>
+                    </div>
+                    <div class="acct__actions">${actions}</div>
+                </li>`;
+            }).join('');
+            this.els.adminJumboList.querySelectorAll('[data-jdraw]').forEach(b => b.addEventListener('click', () => this._openJumboDraw(b.dataset.jdraw)));
+            this.els.adminJumboList.querySelectorAll('[data-jclose]').forEach(b => b.addEventListener('click', () => this._closeJumboSales(b.dataset.jclose)));
+            this.els.adminJumboList.querySelectorAll('[data-jview]').forEach(b => b.addEventListener('click', () => { this._closeModals(); this._openJumbo(); }));
+        });
+    }
+
+    async _refreshAdminHouse() {
+        const h = await this._houseAccount();
+        const c = await this._centralAccount();
+        if (this.els.adminHouseBal) this.els.adminHouseBal.textContent = this._fmt(h ? await this._accountBalance(h.uid) : 0) + ' W';
+        if (this.els.adminCentralBal) this.els.adminCentralBal.textContent = this._fmt(c ? await this._accountBalance(c.uid) : 0) + ' W';
+    }
+
+    _openJumboCreate() {
+        if (!this._isAdmin()) return this._toast('管理者のみ利用できます', 'error');
+        this.els.jcName.value = '';
+        this.els.jcDigits.value = '3';
+        this.els.jcPrice.value = '';
+        this.els.jcPrize1.value = '';
+        this.els.jcPrize2.value = '';
+        this.els.jcPrize3.value = '';
+        this._hide(this.els.jcError);
+        this._show(this.els.jumboCreateModal);
+    }
+
+    async _createJumboDraw() {
+        this._hide(this.els.jcError);
+        const name = (this.els.jcName.value || '').trim();
+        const digits = this._intOrNull(this.els.jcDigits.value);
+        const price = this._intOrNull(this.els.jcPrice.value);
+        const p1 = this._intOrNull(this.els.jcPrize1.value) || 0;
+        const p2 = this._intOrNull(this.els.jcPrize2.value) || 0;
+        const p3 = this._intOrNull(this.els.jcPrize3.value) || 0;
+        if (!name) return this._showError(this.els.jcError, '名前を入力してください。');
+        if (!digits || digits < 1 || digits > 6) return this._showError(this.els.jcError, '桁数は 1〜6 で入力してください。');
+        if (!price || price < 1) return this._showError(this.els.jcError, '1口の値段（1以上）を入力してください。');
+        if (p1 + p2 + p3 <= 0) return this._showError(this.els.jcError, '少なくとも1つの賞金を設定してください。');
+
+        const ref = this.bankDb.ref('jumbo').push();
+        const id = ref.key;
+        this.els.jcCreate.disabled = true;
+        try {
+            await ref.set({ id, name, digits, ticketPrice: price, status: 'open', prize1: p1, prize2: p2, prize3: p3, createdAt: Date.now(), by: this.name });
+            this._toast(`「${name}」を開催しました`, 'success');
+            this.els.jumboCreateModal.hidden = true;
+        } catch (e) {
+            this._showError(this.els.jcError, '開催できませんでした: ' + (e.message || ''));
+        } finally {
+            this.els.jcCreate.disabled = false;
+        }
+    }
+
+    _openJumboDraw(id) {
+        const d = (this._adminJumbo || this._jumboDraws || []).find(x => (x.id || x._key) === id);
+        if (!d) return;
+        this._drawingId = id;
+        this.els.jdTitle.textContent = d.name;
+        this.els.jdHint.textContent = `${d.digits}桁の当選番号を入力（賞金のない等は入力不可）。複数指定する場合はスペースまたはカンマで区切ってください。`;
+        [['jdWin1', 'win1', 'prize1'], ['jdWin2', 'win2', 'prize2'], ['jdWin3', 'win3', 'prize3']].forEach(([el, w, p]) => {
+            const input = this.els[el];
+            input.value = d[w] || '';
+            input.removeAttribute('maxlength');
+            input.disabled = !(d[p] > 0);
+            const ex = '0'.repeat(d.digits);
+            input.placeholder = (d[p] > 0) ? `${ex}, ${ex}（複数可）` : '（賞金なし）';
+        });
+        this._hide(this.els.jdError);
+        this._show(this.els.jumboDrawModal);
+    }
+
+    async _finalizeJumboDraw() {
+        const id = this._drawingId;
+        const d = (this._adminJumbo || this._jumboDraws || []).find(x => (x.id || x._key) === id);
+        if (!d) return;
+        this._hide(this.els.jdError);
+        // 各等を「複数番号リスト」として検証し、正規化（カンマ区切り）して保存
+        const norm = {};
+        const validList = (raw, prize, key) => {
+            if (!prize) return true;
+            const nums = this._parseNums(raw);
+            if (nums.length < 1) return false;
+            if (!nums.every(n => /^[0-9]+$/.test(n) && n.length === d.digits)) return false;
+            norm[key] = [...new Set(nums)].join(','); // 重複除去して保存
+            return true;
+        };
+        const ok1 = validList(this.els.jdWin1.value, d.prize1, 'win1');
+        const ok2 = validList(this.els.jdWin2.value, d.prize2, 'win2');
+        const ok3 = validList(this.els.jdWin3.value, d.prize3, 'win3');
+        if (!ok1 || !ok2 || !ok3) {
+            return this._showError(this.els.jdError, `当選番号は ${d.digits}桁の数字で入力してください（複数可・スペース/カンマ区切り）。`);
+        }
+        const ok = await this._confirm(`「${d.name}」の当選番号を確定します。よろしいですか？\n（確定後は変更できません。賞金は当選者へ手動で送金してください）`);
+        if (!ok) return;
+
+        this.els.jdConfirm.disabled = true;
+        try {
+            const upd = { status: 'drawn', drawnAt: Date.now() };
+            if (d.prize1 > 0) upd.win1 = norm.win1;
+            if (d.prize2 > 0) upd.win2 = norm.win2;
+            if (d.prize3 > 0) upd.win3 = norm.win3;
+            await this.bankDb.ref('jumbo/' + id).update(upd);
+            this._toast('当選番号を確定しました。当選者一覧から確認できます', 'success', 4500);
+            this.els.jumboDrawModal.hidden = true;
+        } catch (e) {
+            this._showError(this.els.jdError, '確定に失敗しました: ' + (e.message || ''));
+        } finally {
+            this.els.jdConfirm.disabled = false;
+        }
+    }
+
+    async _closeJumboSales(id) {
+        const ok = await this._confirm('この宝くじの販売を終了しますか？（購入できなくなります。抽選はあとから行えます）');
+        if (!ok) return;
+        try { await this.bankDb.ref('jumbo/' + id + '/status').set('closed'); this._toast('販売を終了しました', 'success'); }
+        catch (_) { this._toast('変更できませんでした', 'error'); }
     }
 }
 

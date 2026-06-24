@@ -58,6 +58,7 @@
         <nav class="snav">
             <button class="snav__item is-active" data-action="home"><i class="fa-solid fa-table-columns"></i><span>ダッシュボード</span></button>
             <button class="snav__item" data-action="subs"><i class="fa-solid fa-rotate"></i><span>サブスク</span></button>
+            <button class="snav__item" data-action="gamble"><i class="fa-solid fa-dice"></i><span>賭博・宝くじ</span></button>
             <button class="snav__item" data-action="history"><i class="fa-solid fa-clock-rotate-left"></i><span>取引履歴</span></button>
             <button class="snav__item js-admin-only" data-action="admin" hidden><i class="fa-solid fa-shield-halved"></i><span>管理</span></button>
             <button class="snav__item" data-action="settings"><i class="fa-solid fa-gear"></i><span>設定</span></button>
@@ -128,6 +129,16 @@
                 </button>
             </div>
 
+            <!-- 宝くじ・ギャンブル -->
+            <button class="gamble-banner" data-action="gamble">
+                <span class="gamble-banner__ic"><i class="fa-solid fa-dice"></i></span>
+                <span class="gamble-banner__text">
+                    <span class="gamble-banner__title">宝くじ・ギャンブル</span>
+                    <span class="gamble-banner__sub">QUICKONE / ジャンボ宝くじ で運だめし</span>
+                </span>
+                <i class="fa-solid fa-chevron-right gamble-banner__caret"></i>
+            </button>
+
             <!-- 最近の取引 -->
             <section class="panel">
                 <div class="panel__head">
@@ -145,6 +156,7 @@
         <button class="tabbar__item is-active" data-action="home"><i class="fa-solid fa-house"></i><span>ホーム</span></button>
         <button class="tabbar__item" data-action="send"><i class="fa-solid fa-paper-plane"></i><span>送る</span></button>
         <button class="tabbar__item" data-action="subs"><i class="fa-solid fa-rotate"></i><span>サブスク</span></button>
+        <button class="tabbar__item" data-action="gamble"><i class="fa-solid fa-dice"></i><span>賭博・宝くじ</span></button>
         <button class="tabbar__item" data-action="history"><i class="fa-solid fa-clock-rotate-left"></i><span>履歴</span></button>
         <button class="tabbar__item js-admin-only" data-action="admin" hidden><i class="fa-solid fa-shield-halved"></i><span>管理</span></button>
     </nav>
@@ -248,6 +260,24 @@
                 </div>
                 <p id="mintError" class="form-error" hidden></p>
                 <button id="mintBtn" class="btn btn--primary btn--block">発行する</button>
+            </div>
+
+            <div class="admin-block">
+                <h4 class="admin-block__title">ギャンブル運営</h4>
+                <div class="gops">
+                    <div class="gops__row">
+                        <div class="gops__meta"><span class="gops__label">宝くじ運営（プール）</span><span id="adminHouseBal" class="gops__bal">— W</span></div>
+                        <button id="adminHouseFund" class="acct__btn">資金</button>
+                    </div>
+                    <div class="gops__row">
+                        <div class="gops__meta"><span class="gops__label">中央銀行（補填元）</span><span id="adminCentralBal" class="gops__bal">— W</span></div>
+                        <button id="adminCentralFund" class="acct__btn">資金</button>
+                    </div>
+                </div>
+                <p class="muted-note" style="margin:10px 0 14px">掛け金は「宝くじ運営」に貯まり、当選金もここから支払われます。不足分のみ「中央銀行」から補填されます。大きな当選に備えて中央銀行へ資金を入れておくと安心です。</p>
+                <button id="openJumboCreate" class="btn btn--primary btn--block"><i class="fa-solid fa-ticket"></i> ジャンボ宝くじを開催する</button>
+                <ul id="adminJumboList" class="acct-list" style="margin-top:12px"></ul>
+                <p id="adminJumboEmpty" class="empty" hidden>開催中のジャンボはありません。</p>
             </div>
 
             <div class="admin-block">
@@ -365,6 +395,144 @@
         <div class="modal__foot">
             <button class="btn btn--ghost" id="confirmCancel">やめる</button>
             <button class="btn btn--primary" id="confirmOk">OK</button>
+        </div>
+    </div>
+</div>
+
+<!-- ===================== ギャンブル・ハブ ===================== -->
+<div id="gambleModal" class="modal" hidden>
+    <div class="modal__panel modal__panel--tall">
+        <div class="modal__head"><h3><i class="fa-solid fa-dice"></i> 宝くじ・ギャンブル</h3><button class="icon-btn modal__close" data-close><i class="fa-solid fa-xmark"></i></button></div>
+        <div class="modal__body">
+            <div class="gamble-grid">
+                <button class="gamble-card gamble-card--quick" data-action="quickone">
+                    <span class="gamble-card__ic"><i class="fa-solid fa-wand-magic-sparkles"></i></span>
+                    <span class="gamble-card__name">QUICKONE</span>
+                    <span class="gamble-card__desc">いつでもけずれるスクラッチ宝くじ。即抽選で結果がわかります。</span>
+                </button>
+                <button class="gamble-card gamble-card--jumbo" data-action="jumbo">
+                    <span class="gamble-card__ic"><i class="fa-solid fa-ticket"></i></span>
+                    <span class="gamble-card__name">ジャンボ宝くじ</span>
+                    <span class="gamble-card__desc">管理者開催の大規模宝くじ。番号を選んで購入、抽選で当選！</span>
+                </button>
+                <button class="gamble-card gamble-card--soon" data-action="keiba">
+                    <span class="gamble-card__ic"><i class="fa-solid fa-horse"></i></span>
+                    <span class="gamble-card__name">競馬 <span class="gamble-card__tag">準備中</span></span>
+                    <span class="gamble-card__desc">レース映像のライブ／アーカイブ配信に対応予定（近日公開）。</span>
+                </button>
+            </div>
+            <p id="gambleHouseInfo" class="gamble-house"></p>
+        </div>
+    </div>
+</div>
+
+<!-- ===================== QUICKONE ===================== -->
+<div id="quickoneModal" class="modal" hidden>
+    <div class="modal__panel">
+        <div class="modal__head"><h3><i class="fa-solid fa-wand-magic-sparkles"></i> QUICKONE</h3><button class="icon-btn modal__close" data-close><i class="fa-solid fa-xmark"></i></button></div>
+        <div class="modal__body">
+            <div id="quickoneResult" class="qo-result"></div>
+            <div class="qo-qty">
+                <label for="quickoneQty">口数（最大 1000 口）</label>
+                <div class="qo-qty__row">
+                    <input id="quickoneQty" type="number" min="1" max="1000" step="1" value="1" inputmode="numeric">
+                    <div class="qo-qty__chips">
+                        <button type="button" class="qo-chip" data-qty="1">1</button>
+                        <button type="button" class="qo-chip" data-qty="10">10</button>
+                        <button type="button" class="qo-chip" data-qty="100">100</button>
+                        <button type="button" class="qo-chip" data-qty="1000">1000</button>
+                    </div>
+                </div>
+            </div>
+            <button id="quickonePlay" class="btn btn--primary btn--block qo-play"></button>
+            <p class="muted-note" style="text-align:center;margin-top:10px">1口 <b id="quickoneCost">—</b> W ・ 結果はその場で確定します</p>
+            <div class="qo-tablehead"><span>当選</span><span>倍率</span><span>賞金</span><span>確率</span></div>
+            <ul id="quickoneTable" class="qo-table"></ul>
+            <p id="quickonePrizeNote" class="qo-prizenote"></p>
+        </div>
+    </div>
+</div>
+
+<!-- ===================== ジャンボ宝くじ（利用者） ===================== -->
+<div id="jumboModal" class="modal" hidden>
+    <div class="modal__panel modal__panel--tall">
+        <div class="modal__head"><h3><i class="fa-solid fa-ticket"></i> ジャンボ宝くじ</h3><button class="icon-btn modal__close" data-close><i class="fa-solid fa-xmark"></i></button></div>
+        <div class="modal__body">
+            <ul id="jumboList" class="jb-list"></ul>
+            <p id="jumboEmpty" class="empty" hidden>現在開催中のジャンボ宝くじはありません。<br>管理者の開催をお待ちください。</p>
+        </div>
+    </div>
+</div>
+
+<!-- ===================== ジャンボ開催（管理） ===================== -->
+<div id="jumboCreateModal" class="modal" hidden>
+    <div class="modal__panel">
+        <div class="modal__head"><h3>ジャンボ宝くじを開催</h3><button class="icon-btn modal__close" data-close><i class="fa-solid fa-xmark"></i></button></div>
+        <div class="modal__body">
+            <div class="field">
+                <label for="jcName">名前</label>
+                <input id="jcName" type="text" placeholder="例: 年末ジャンボ" maxlength="40">
+            </div>
+            <div class="grid-2">
+                <div class="field">
+                    <label for="jcDigits">番号の桁数</label>
+                    <select id="jcDigits" class="jc-select">
+                        <option value="2">2桁（00〜99）</option>
+                        <option value="3" selected>3桁（000〜999）</option>
+                        <option value="4">4桁（0000〜9999）</option>
+                        <option value="5">5桁</option>
+                        <option value="6">6桁</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="jcPrice">1口の値段（W）</label>
+                    <input id="jcPrice" type="number" inputmode="numeric" min="1" step="1" placeholder="例: 100">
+                </div>
+            </div>
+            <div class="field">
+                <label for="jcPrize1">1等の賞金（W）</label>
+                <input id="jcPrize1" type="number" inputmode="numeric" min="0" step="1" placeholder="例: 10000">
+            </div>
+            <div class="grid-2">
+                <div class="field">
+                    <label for="jcPrize2">2等の賞金（W・任意）</label>
+                    <input id="jcPrize2" type="number" inputmode="numeric" min="0" step="1" placeholder="0">
+                </div>
+                <div class="field">
+                    <label for="jcPrize3">3等の賞金（W・任意）</label>
+                    <input id="jcPrize3" type="number" inputmode="numeric" min="0" step="1" placeholder="0">
+                </div>
+            </div>
+            <p id="jcError" class="form-error" hidden></p>
+            <p class="muted-note">当選番号は、販売後に「当選番号を確定」で指定します。確定後、<b>賞金は当選者へ手動で送金</b>してください（自動支払いは行いません）。当選者は全員が「当選者一覧」で確認できます。</p>
+            <button id="jcCreate" class="btn btn--primary btn--block" style="margin-top:12px">開催する</button>
+        </div>
+    </div>
+</div>
+
+<!-- ===================== ジャンボ抽選（管理） ===================== -->
+<div id="jumboDrawModal" class="modal" hidden>
+    <div class="modal__panel modal__panel--narrow">
+        <div class="modal__head"><h3>抽選：<span id="jdTitle">—</span></h3><button class="icon-btn modal__close" data-close><i class="fa-solid fa-xmark"></i></button></div>
+        <div class="modal__body">
+            <p id="jdHint" class="muted-note" style="margin-bottom:14px"></p>
+            <div class="field">
+                <label for="jdWin1">1等 当選番号</label>
+                <input id="jdWin1" type="text" inputmode="numeric" class="jb-wins">
+            </div>
+            <div class="field">
+                <label for="jdWin2">2等 当選番号</label>
+                <input id="jdWin2" type="text" inputmode="numeric" class="jb-wins">
+            </div>
+            <div class="field">
+                <label for="jdWin3">3等 当選番号</label>
+                <input id="jdWin3" type="text" inputmode="numeric" class="jb-wins">
+            </div>
+            <p id="jdError" class="form-error" hidden></p>
+        </div>
+        <div class="modal__foot">
+            <button class="btn btn--ghost" data-close>やめる</button>
+            <button id="jdConfirm" class="btn btn--primary">当選番号を確定</button>
         </div>
     </div>
 </div>
