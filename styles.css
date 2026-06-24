@@ -689,3 +689,28 @@ b { font-weight: 600; }
 .jb-mine__row { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
 .jb-mine__win { color:var(--gold-2); font-weight:700; }
 .jb-numtext { font-family:var(--num); font-size:.92rem; line-height:1.9; color:var(--ink-soft); word-break:break-word; font-variant-numeric:tabular-nums; }
+
+/* 長者番付 */
+.gamble-banner--rich .gamble-banner__ic { background:linear-gradient(145deg, #ffe89a, var(--gold) 60%, var(--gold-2)); }
+.rich-list { list-style:none; display:flex; flex-direction:column; gap:6px; }
+.rich-loading { color:var(--faint); padding:14px; text-align:center; }
+.rich-row {
+    display:flex; align-items:center; gap:12px; padding:11px 13px;
+    background:var(--surface); border:1px solid var(--line); border-radius:var(--r-sm);
+}
+.rich-row.is-me { border-color:var(--ink); box-shadow:0 0 0 2px rgba(19,24,35,.06); }
+.rich-row--1 { background:linear-gradient(100deg, var(--gold-bg), var(--surface)); border-color:var(--gold-3); }
+.rich-row--2 { background:linear-gradient(100deg, #f1f3f6, var(--surface)); border-color:var(--line-2); }
+.rich-row--3 { background:linear-gradient(100deg, #fbf0e6, var(--surface)); border-color:#e8cdb0; }
+.rich-rank {
+    flex:none; width:34px; height:34px; border-radius:10px; display:grid; place-items:center;
+    font-family:var(--num); font-weight:800; font-size:.95rem; background:var(--surface-2); color:var(--muted);
+    font-variant-numeric:tabular-nums;
+}
+.rich-rank--medal { background:var(--gold-bg); color:var(--gold-2); position:relative; flex-direction:column; font-size:.8rem; gap:0; }
+.rich-rank--medal i { font-size:.62rem; line-height:1; margin-bottom:1px; }
+.rich-row--2 .rich-rank--medal { background:#eceff3; color:#7a8390; }
+.rich-row--3 .rich-rank--medal { background:#f6e7d6; color:#a9763f; }
+.rich-name { flex:1; min-width:0; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.rich-frozen { color:var(--info, #4b8); font-size:.78rem; }
+.rich-bal { font-family:var(--num); font-weight:700; color:var(--gold-2); font-variant-numeric:tabular-nums; flex:none; }

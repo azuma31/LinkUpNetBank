@@ -59,6 +59,7 @@
             <button class="snav__item is-active" data-action="home"><i class="fa-solid fa-table-columns"></i><span>ダッシュボード</span></button>
             <button class="snav__item" data-action="subs"><i class="fa-solid fa-rotate"></i><span>サブスク</span></button>
             <button class="snav__item" data-action="gamble"><i class="fa-solid fa-dice"></i><span>宝くじ・ギャンブル</span></button>
+            <button class="snav__item" data-action="rich"><i class="fa-solid fa-crown"></i><span>長者番付</span></button>
             <button class="snav__item" data-action="history"><i class="fa-solid fa-clock-rotate-left"></i><span>取引履歴</span></button>
             <button class="snav__item js-admin-only" data-action="admin" hidden><i class="fa-solid fa-shield-halved"></i><span>管理</span></button>
             <button class="snav__item" data-action="settings"><i class="fa-solid fa-gear"></i><span>設定</span></button>
@@ -135,6 +136,15 @@
                 <span class="gamble-banner__text">
                     <span class="gamble-banner__title">宝くじ・ギャンブル</span>
                     <span class="gamble-banner__sub">QUICKONE / ジャンボ宝くじ で運だめし</span>
+                </span>
+                <i class="fa-solid fa-chevron-right gamble-banner__caret"></i>
+            </button>
+
+            <button class="gamble-banner gamble-banner--rich" data-action="rich">
+                <span class="gamble-banner__ic"><i class="fa-solid fa-crown"></i></span>
+                <span class="gamble-banner__text">
+                    <span class="gamble-banner__title">長者番付</span>
+                    <span class="gamble-banner__sub">残高ランキングをチェック</span>
                 </span>
                 <i class="fa-solid fa-chevron-right gamble-banner__caret"></i>
             </button>
@@ -278,6 +288,13 @@
                 <button id="openJumboCreate" class="btn btn--primary btn--block"><i class="fa-solid fa-ticket"></i> ジャンボ宝くじを開催する</button>
                 <ul id="adminJumboList" class="acct-list" style="margin-top:12px"></ul>
                 <p id="adminJumboEmpty" class="empty" hidden>開催中のジャンボはありません。</p>
+            </div>
+
+            <div class="admin-block">
+                <h4 class="admin-block__title">長者番付の除外設定</h4>
+                <p class="muted-note" style="margin:0 0 12px">「除外」にした口座は長者番付に表示されません（例: 宝くじ運営・中央銀行・管理者など）。</p>
+                <ul id="adminRichList" class="acct-list"></ul>
+                <p id="adminRichEmpty" class="empty" hidden>口座がありません。</p>
             </div>
 
             <div class="admin-block">
@@ -513,6 +530,26 @@
                     <label for="jcPrize3">3等の賞金（W・任意）</label>
                     <input id="jcPrize3" type="number" inputmode="numeric" min="0" step="1" placeholder="0">
                 </div>
+                <div class="field">
+                    <label for="jcPrize4">4等の賞金（W・任意）</label>
+                    <input id="jcPrize4" type="number" inputmode="numeric" min="0" step="1" placeholder="0">
+                </div>
+                <div class="field">
+                    <label for="jcPrize5">5等の賞金（W・任意）</label>
+                    <input id="jcPrize5" type="number" inputmode="numeric" min="0" step="1" placeholder="0">
+                </div>
+                <div class="field">
+                    <label for="jcPrize6">6等の賞金（W・任意）</label>
+                    <input id="jcPrize6" type="number" inputmode="numeric" min="0" step="1" placeholder="0">
+                </div>
+                <div class="field">
+                    <label for="jcPrize7">7等の賞金（W・任意）</label>
+                    <input id="jcPrize7" type="number" inputmode="numeric" min="0" step="1" placeholder="0">
+                </div>
+                <div class="field">
+                    <label for="jcPrize8">8等の賞金（W・任意）</label>
+                    <input id="jcPrize8" type="number" inputmode="numeric" min="0" step="1" placeholder="0">
+                </div>
             </div>
             <p id="jcError" class="form-error" hidden></p>
             <p class="muted-note">当選番号は、販売後に「当選番号を確定」で指定します。確定後、<b>賞金は当選者へ手動で送金</b>してください（自動支払いは行いません）。当選者は全員が「当選者一覧」で確認できます。</p>
@@ -539,11 +576,95 @@
                 <label for="jdWin3">3等 当選番号</label>
                 <input id="jdWin3" type="text" inputmode="numeric" class="jb-wins">
             </div>
+            <div class="field">
+                <label for="jdWin4">4等 当選番号</label>
+                <input id="jdWin4" type="text" inputmode="numeric" class="jb-wins">
+            </div>
+            <div class="field">
+                <label for="jdWin5">5等 当選番号</label>
+                <input id="jdWin5" type="text" inputmode="numeric" class="jb-wins">
+            </div>
+            <div class="field">
+                <label for="jdWin6">6等 当選番号</label>
+                <input id="jdWin6" type="text" inputmode="numeric" class="jb-wins">
+            </div>
+            <div class="field">
+                <label for="jdWin7">7等 当選番号</label>
+                <input id="jdWin7" type="text" inputmode="numeric" class="jb-wins">
+            </div>
+            <div class="field">
+                <label for="jdWin8">8等 当選番号</label>
+                <input id="jdWin8" type="text" inputmode="numeric" class="jb-wins">
+            </div>
             <p id="jdError" class="form-error" hidden></p>
         </div>
         <div class="modal__foot">
             <button class="btn btn--ghost" data-close>やめる</button>
             <button id="jdConfirm" class="btn btn--primary">当選番号を確定</button>
+        </div>
+    </div>
+</div>
+
+<!-- ===================== ジャンボ 金額変更（管理） ===================== -->
+<div id="jumboEditModal" class="modal" hidden>
+    <div class="modal__panel">
+        <div class="modal__head"><h3>金額変更：<span id="jeTitle">—</span></h3><button class="icon-btn modal__close" data-close><i class="fa-solid fa-xmark"></i></button></div>
+        <div class="modal__body">
+            <p class="muted-note" style="margin-bottom:14px">1口の値段と各等の賞金を後から変更できます（桁数・番号は変更できません）。</p>
+            <div class="field">
+                <label for="jePrice">1口の値段（W）</label>
+                <input id="jePrice" type="number" inputmode="numeric" min="1" step="1">
+            </div>
+            <div class="field">
+                <label for="jePrize1">1等の賞金（W）</label>
+                <input id="jePrize1" type="number" inputmode="numeric" min="0" step="1">
+            </div>
+            <div class="grid-2">
+                <div class="field">
+                    <label for="jePrize2">2等の賞金（W）</label>
+                    <input id="jePrize2" type="number" inputmode="numeric" min="0" step="1">
+                </div>
+                <div class="field">
+                    <label for="jePrize3">3等の賞金（W）</label>
+                    <input id="jePrize3" type="number" inputmode="numeric" min="0" step="1">
+                </div>
+                <div class="field">
+                    <label for="jePrize4">4等の賞金（W）</label>
+                    <input id="jePrize4" type="number" inputmode="numeric" min="0" step="1">
+                </div>
+                <div class="field">
+                    <label for="jePrize5">5等の賞金（W）</label>
+                    <input id="jePrize5" type="number" inputmode="numeric" min="0" step="1">
+                </div>
+                <div class="field">
+                    <label for="jePrize6">6等の賞金（W）</label>
+                    <input id="jePrize6" type="number" inputmode="numeric" min="0" step="1">
+                </div>
+                <div class="field">
+                    <label for="jePrize7">7等の賞金（W）</label>
+                    <input id="jePrize7" type="number" inputmode="numeric" min="0" step="1">
+                </div>
+                <div class="field">
+                    <label for="jePrize8">8等の賞金（W）</label>
+                    <input id="jePrize8" type="number" inputmode="numeric" min="0" step="1">
+                </div>
+            </div>
+            <p id="jeError" class="form-error" hidden></p>
+        </div>
+        <div class="modal__foot">
+            <button class="btn btn--ghost" data-close>やめる</button>
+            <button id="jeSave" class="btn btn--primary">保存</button>
+        </div>
+    </div>
+</div>
+
+<!-- ===================== 長者番付 ===================== -->
+<div id="richModal" class="modal" hidden>
+    <div class="modal__panel modal__panel--tall">
+        <div class="modal__head"><h3><i class="fa-solid fa-crown"></i> 長者番付</h3><button class="icon-btn modal__close" data-close><i class="fa-solid fa-xmark"></i></button></div>
+        <div class="modal__body">
+            <ol id="richList" class="rich-list"></ol>
+            <p id="richEmpty" class="empty" hidden>表示できる口座がありません。</p>
         </div>
     </div>
 </div>

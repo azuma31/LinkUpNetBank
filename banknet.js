@@ -141,11 +141,24 @@ class LinkUpNetBank {
             jumboCreateModal: id('jumboCreateModal'),
             jcName: id('jcName'), jcDigits: id('jcDigits'), jcPrice: id('jcPrice'),
             jcPrize1: id('jcPrize1'), jcPrize2: id('jcPrize2'), jcPrize3: id('jcPrize3'),
+            jcPrize4: id('jcPrize4'), jcPrize5: id('jcPrize5'),
+            jcPrize6: id('jcPrize6'), jcPrize7: id('jcPrize7'), jcPrize8: id('jcPrize8'),
             jcError: id('jcError'), jcCreate: id('jcCreate'),
             // ジャンボ抽選
             jumboDrawModal: id('jumboDrawModal'), jdTitle: id('jdTitle'), jdHint: id('jdHint'),
             jdWin1: id('jdWin1'), jdWin2: id('jdWin2'), jdWin3: id('jdWin3'),
+            jdWin4: id('jdWin4'), jdWin5: id('jdWin5'),
+            jdWin6: id('jdWin6'), jdWin7: id('jdWin7'), jdWin8: id('jdWin8'),
             jdError: id('jdError'), jdConfirm: id('jdConfirm'),
+            // ジャンボ 金額変更
+            jumboEditModal: id('jumboEditModal'), jeTitle: id('jeTitle'), jePrice: id('jePrice'),
+            jePrize1: id('jePrize1'), jePrize2: id('jePrize2'), jePrize3: id('jePrize3'),
+            jePrize4: id('jePrize4'), jePrize5: id('jePrize5'),
+            jePrize6: id('jePrize6'), jePrize7: id('jePrize7'), jePrize8: id('jePrize8'),
+            jeError: id('jeError'), jeSave: id('jeSave'),
+            // 長者番付
+            richModal: id('richModal'), richList: id('richList'), richEmpty: id('richEmpty'),
+            adminRichList: id('adminRichList'), adminRichEmpty: id('adminRichEmpty'),
         };
     }
 
@@ -217,6 +230,7 @@ class LinkUpNetBank {
         if (this.els.openJumboCreate) this.els.openJumboCreate.addEventListener('click', () => this._openJumboCreate());
         if (this.els.jcCreate) this.els.jcCreate.addEventListener('click', () => this._createJumboDraw());
         if (this.els.jdConfirm) this.els.jdConfirm.addEventListener('click', () => this._finalizeJumboDraw());
+        if (this.els.jeSave) this.els.jeSave.addEventListener('click', () => this._saveJumboEdit());
         if (this.els.adminHouseFund) this.els.adminHouseFund.addEventListener('click', async () => {
             const h = await this._houseAccount();
             if (h && (this._adminAccounts || []).some(a => a.uid === h.uid)) this._openEditBalance(h.uid);
@@ -238,6 +252,7 @@ class LinkUpNetBank {
         else if (a === 'admin') { this._setActiveNav('admin'); this._openAdmin(); }
         else if (a === 'subs') { this._setActiveNav('subs'); this._openSubs(); }
         else if (a === 'gamble') { this._setActiveNav('gamble'); this._openGamble(); }
+        else if (a === 'rich') { this._setActiveNav('rich'); this._openRich(); }
         else if (a === 'quickone') this._openQuickone();
         else if (a === 'jumbo') this._openJumbo();
         else if (a === 'keiba') this._toast('競馬は準備中です（近日公開）', 'info', 3500);
@@ -930,6 +945,7 @@ class LinkUpNetBank {
         this._watchAdminAccounts();
         this._watchAdminJumbo();
         this._refreshAdminHouse();
+        this._loadRichExcluded().then(() => this._renderAdminRich());
     }
 
     _watchAdminAccounts() {
@@ -958,6 +974,7 @@ class LinkUpNetBank {
             this.els.adminAccountList.querySelectorAll('[data-edit]').forEach(b => {
                 b.addEventListener('click', () => this._openEditBalance(b.dataset.edit));
             });
+            this._renderAdminRich();
         });
     }
 
@@ -1328,6 +1345,91 @@ class LinkUpNetBank {
         const hm = d.getHours().toString().padStart(2, '0') + ':' + d.getMinutes().toString().padStart(2, '0');
         return sameDay ? hm : `${d.getMonth() + 1}/${d.getDate()} ${hm}`;
     }
+    // =====================================================
+    // 長者番付（残高ランキング）
+    // =====================================================
+    async _loadRichExcluded() {
+        const ex = {};
+        try {
+            const s = await this.bankDb.ref('richExcluded').get();
+            if (s.exists()) s.forEach(ch => { if (ch.val()) ex[ch.key] = true; });
+        } catch (_) {}
+        this._richExcluded = ex;
+        return ex;
+    }
+
+    async _loadAllAccounts() {
+        const list = [];
+        try {
+            const s = await this.bankDb.ref('accounts').get();
+            if (s.exists()) s.forEach(ch => { const v = ch.val(); if (v && v.uid) list.push(v); });
+        } catch (_) {}
+        return list;
+    }
+
+    async _openRich() {
+        this._show(this.els.richModal);
+        this.els.richList.innerHTML = '<li class="rich-loading">読み込み中…</li>';
+        const [accounts, excluded] = await Promise.all([this._loadAllAccounts(), this._loadRichExcluded()]);
+        const ranked = accounts
+            .filter(a => !excluded[a.uid])
+            .sort((x, y) => (y.balance || 0) - (x.balance || 0));
+
+        this.els.richEmpty.hidden = ranked.length > 0;
+        const CAP = 200;
+        const rows = ranked.slice(0, CAP).map((a, i) => {
+            const rank = i + 1;
+            const me = a.uid === this.uid ? ' is-me' : '';
+            const medal = rank <= 3 ? ` rich-row--${rank}` : '';
+            const rankCell = rank <= 3
+                ? `<span class="rich-rank rich-rank--medal"><i class="fa-solid fa-crown"></i>${rank}</span>`
+                : `<span class="rich-rank">${rank}</span>`;
+            return `<li class="rich-row${medal}${me}">
+                ${rankCell}
+                <span class="rich-name">${this._esc(a.name || '不明')}${a.frozen ? ' <i class="fa-solid fa-snowflake rich-frozen" title="凍結中"></i>' : ''}</span>
+                <span class="rich-bal">${this._fmt(a.balance || 0)} W</span>
+            </li>`;
+        }).join('');
+        const more = ranked.length > CAP ? `<li class="muted-note" style="padding:10px 12px">ほか ${ranked.length - CAP} 件…</li>` : '';
+        this.els.richList.innerHTML = rows + more;
+    }
+
+    // 管理: 除外設定の一覧を描画（_adminAccounts と _richExcluded から）
+    _renderAdminRich() {
+        if (!this.els.adminRichList) return;
+        const accounts = (this._adminAccounts || []).slice().sort((x, y) => (y.balance || 0) - (x.balance || 0));
+        const ex = this._richExcluded || {};
+        this.els.adminRichEmpty.hidden = accounts.length > 0;
+        this.els.adminRichList.innerHTML = accounts.map(a => {
+            const excluded = !!ex[a.uid];
+            const btn = excluded
+                ? `<button class="acct__btn" data-richinc="${this._esc(a.uid)}">番付に戻す</button>`
+                : `<button class="acct__freeze" data-richexc="${this._esc(a.uid)}">除外する</button>`;
+            return `<li class="acct">
+                <div class="acct__main">
+                    <div class="acct__name">${this._esc(a.name || '不明')} ${excluded ? '<span class="badge badge--paused">除外中</span>' : ''}</div>
+                    <div class="acct__bal">${this._fmt(a.balance || 0)} W</div>
+                </div>
+                <div class="acct__actions">${btn}</div>
+            </li>`;
+        }).join('');
+        this.els.adminRichList.querySelectorAll('[data-richexc]').forEach(b => b.addEventListener('click', () => this._setRichExcluded(b.dataset.richexc, true)));
+        this.els.adminRichList.querySelectorAll('[data-richinc]').forEach(b => b.addEventListener('click', () => this._setRichExcluded(b.dataset.richinc, false)));
+    }
+
+    async _setRichExcluded(uid, on) {
+        if (!this._isAdmin()) return this._toast('管理者のみ利用できます', 'error');
+        try {
+            await this.bankDb.ref('richExcluded/' + uid).set(on ? true : null);
+            this._richExcluded = this._richExcluded || {};
+            if (on) this._richExcluded[uid] = true; else delete this._richExcluded[uid];
+            this._renderAdminRich();
+            this._toast(on ? '長者番付から除外しました' : '長者番付に戻しました', 'success');
+        } catch (e) {
+            this._toast('変更に失敗しました: ' + (e.message || ''), 'error');
+        }
+    }
+
     _esc(s) {
         return String(s == null ? '' : s).replace(/[&<>"']/g, c =>
             ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -1596,7 +1698,7 @@ class LinkUpNetBank {
                     const did = drawCh.key;
                     const d = drawMap[did];
                     const drawn = d && d.status === 'drawn';
-                    if (!summary[did]) summary[did] = { sales: 0, myCount: 0, myWins: { 1: 0, 2: 0, 3: 0 }, myWinTotal: 0 };
+                    if (!summary[did]) summary[did] = { sales: 0, myCount: 0, myWins: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0 }, myWinTotal: 0 };
                     drawCh.forEach(tCh => {
                         const t = tCh.val(); if (!t) return;
                         summary[did].sales++;
@@ -1620,9 +1722,9 @@ class LinkUpNetBank {
     }
 
     _jumboTier(draw, number) {
-        if (this._parseNums(draw.win1).includes(number)) return 1;
-        if (this._parseNums(draw.win2).includes(number)) return 2;
-        if (this._parseNums(draw.win3).includes(number)) return 3;
+        for (let n = 1; n <= 8; n++) {
+            if (this._parseNums(draw['win' + n]).includes(number)) return n;
+        }
         return 0;
     }
 
@@ -1632,7 +1734,7 @@ class LinkUpNetBank {
         this._jumboMine = mine;        // 一覧モーダル用に保持
         this._jumboWinners = winners;  // （未使用だが保持）
         const idOf = d => d.id || d._key;
-        const sumOf = id => summary[id] || { sales: 0, myCount: 0, myWins: { 1: 0, 2: 0, 3: 0 }, myWinTotal: 0 };
+        const sumOf = id => summary[id] || { sales: 0, myCount: 0, myWins: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0 }, myWinTotal: 0 };
         // 販売終了でも自分の券があれば表示
         const visible = draws.filter(d => d.status !== 'closed' || sumOf(idOf(d)).myCount > 0);
 
@@ -1681,7 +1783,7 @@ class LinkUpNetBank {
         const closed = d.status === 'closed';
         const open = d.status === 'open';
 
-        const prizes = [1, 2, 3].map(n => ({ n, amt: d['prize' + n] || 0 })).filter(p => p.amt > 0);
+        const prizes = [1, 2, 3, 4, 5, 6, 7, 8].map(n => ({ n, amt: d['prize' + n] || 0 })).filter(p => p.amt > 0);
         const prizeRows = prizes.map(p =>
             `<div class="jb-prize"><span class="jb-prize__rank">${p.n}等</span><b>${this._fmt(p.amt)} W</b>` +
             (drawn ? `<span class="jb-prize__win">当選 ${this._esc(this._parseNums(d['win' + p.n]).join('・') || '—')}</span>` : '') +
@@ -1877,6 +1979,7 @@ class LinkUpNetBank {
                 const drawn = d.status === 'drawn', closed = d.status === 'closed';
                 const statusLabel = drawn ? '抽選済み' : closed ? '販売終了' : '販売中';
                 let actions = '';
+                actions += `<button class="acct__freeze" data-jedit="${this._esc(id)}">金額変更</button>`;
                 if (!drawn) {
                     if (!closed) actions += `<button class="acct__freeze" data-jclose="${this._esc(id)}">販売終了</button>`;
                     actions += `<button class="acct__btn" data-jdraw="${this._esc(id)}">当選番号を確定</button>`;
@@ -1894,6 +1997,7 @@ class LinkUpNetBank {
             this.els.adminJumboList.querySelectorAll('[data-jdraw]').forEach(b => b.addEventListener('click', () => this._openJumboDraw(b.dataset.jdraw)));
             this.els.adminJumboList.querySelectorAll('[data-jclose]').forEach(b => b.addEventListener('click', () => this._closeJumboSales(b.dataset.jclose)));
             this.els.adminJumboList.querySelectorAll('[data-jview]').forEach(b => b.addEventListener('click', () => { this._closeModals(); this._openJumbo(); }));
+            this.els.adminJumboList.querySelectorAll('[data-jedit]').forEach(b => b.addEventListener('click', () => this._openJumboEdit(b.dataset.jedit)));
         });
     }
 
@@ -1909,9 +2013,7 @@ class LinkUpNetBank {
         this.els.jcName.value = '';
         this.els.jcDigits.value = '3';
         this.els.jcPrice.value = '';
-        this.els.jcPrize1.value = '';
-        this.els.jcPrize2.value = '';
-        this.els.jcPrize3.value = '';
+        [1, 2, 3, 4, 5, 6, 7, 8].forEach(n => { this.els['jcPrize' + n].value = ''; });
         this._hide(this.els.jcError);
         this._show(this.els.jumboCreateModal);
     }
@@ -1921,19 +2023,19 @@ class LinkUpNetBank {
         const name = (this.els.jcName.value || '').trim();
         const digits = this._intOrNull(this.els.jcDigits.value);
         const price = this._intOrNull(this.els.jcPrice.value);
-        const p1 = this._intOrNull(this.els.jcPrize1.value) || 0;
-        const p2 = this._intOrNull(this.els.jcPrize2.value) || 0;
-        const p3 = this._intOrNull(this.els.jcPrize3.value) || 0;
+        const prizes = [1, 2, 3, 4, 5, 6, 7, 8].map(n => this._intOrNull(this.els['jcPrize' + n].value) || 0);
         if (!name) return this._showError(this.els.jcError, '名前を入力してください。');
         if (!digits || digits < 1 || digits > 6) return this._showError(this.els.jcError, '桁数は 1〜6 で入力してください。');
         if (!price || price < 1) return this._showError(this.els.jcError, '1口の値段（1以上）を入力してください。');
-        if (p1 + p2 + p3 <= 0) return this._showError(this.els.jcError, '少なくとも1つの賞金を設定してください。');
+        if (prizes.reduce((a, b) => a + b, 0) <= 0) return this._showError(this.els.jcError, '少なくとも1つの賞金を設定してください。');
 
         const ref = this.bankDb.ref('jumbo').push();
         const id = ref.key;
         this.els.jcCreate.disabled = true;
         try {
-            await ref.set({ id, name, digits, ticketPrice: price, status: 'open', prize1: p1, prize2: p2, prize3: p3, createdAt: Date.now(), by: this.name });
+            const data = { id, name, digits, ticketPrice: price, status: 'open', createdAt: Date.now(), by: this.name };
+            prizes.forEach((v, i) => { data['prize' + (i + 1)] = v; });
+            await ref.set(data);
             this._toast(`「${name}」を開催しました`, 'success');
             this.els.jumboCreateModal.hidden = true;
         } catch (e) {
@@ -1949,7 +2051,7 @@ class LinkUpNetBank {
         this._drawingId = id;
         this.els.jdTitle.textContent = d.name;
         this.els.jdHint.textContent = `${d.digits}桁の当選番号を入力（賞金のない等は入力不可）。複数指定する場合はスペースまたはカンマで区切ってください。`;
-        [['jdWin1', 'win1', 'prize1'], ['jdWin2', 'win2', 'prize2'], ['jdWin3', 'win3', 'prize3']].forEach(([el, w, p]) => {
+        [['jdWin1', 'win1', 'prize1'], ['jdWin2', 'win2', 'prize2'], ['jdWin3', 'win3', 'prize3'], ['jdWin4', 'win4', 'prize4'], ['jdWin5', 'win5', 'prize5'], ['jdWin6', 'win6', 'prize6'], ['jdWin7', 'win7', 'prize7'], ['jdWin8', 'win8', 'prize8']].forEach(([el, w, p]) => {
             const input = this.els[el];
             input.value = d[w] || '';
             input.removeAttribute('maxlength');
@@ -1976,10 +2078,8 @@ class LinkUpNetBank {
             norm[key] = [...new Set(nums)].join(','); // 重複除去して保存
             return true;
         };
-        const ok1 = validList(this.els.jdWin1.value, d.prize1, 'win1');
-        const ok2 = validList(this.els.jdWin2.value, d.prize2, 'win2');
-        const ok3 = validList(this.els.jdWin3.value, d.prize3, 'win3');
-        if (!ok1 || !ok2 || !ok3) {
+        const oks = [1, 2, 3, 4, 5, 6, 7, 8].map(n => validList(this.els['jdWin' + n].value, d['prize' + n], 'win' + n));
+        if (oks.some(ok => !ok)) {
             return this._showError(this.els.jdError, `当選番号は ${d.digits}桁の数字で入力してください（複数可・スペース/カンマ区切り）。`);
         }
         const ok = await this._confirm(`「${d.name}」の当選番号を確定します。よろしいですか？\n（確定後は変更できません。賞金は当選者へ手動で送金してください）`);
@@ -1988,9 +2088,7 @@ class LinkUpNetBank {
         this.els.jdConfirm.disabled = true;
         try {
             const upd = { status: 'drawn', drawnAt: Date.now() };
-            if (d.prize1 > 0) upd.win1 = norm.win1;
-            if (d.prize2 > 0) upd.win2 = norm.win2;
-            if (d.prize3 > 0) upd.win3 = norm.win3;
+            [1, 2, 3, 4, 5, 6, 7, 8].forEach(n => { if (d['prize' + n] > 0) upd['win' + n] = norm['win' + n]; });
             await this.bankDb.ref('jumbo/' + id).update(upd);
             this._toast('当選番号を確定しました。当選者一覧から確認できます', 'success', 4500);
             this.els.jumboDrawModal.hidden = true;
@@ -1998,6 +2096,43 @@ class LinkUpNetBank {
             this._showError(this.els.jdError, '確定に失敗しました: ' + (e.message || ''));
         } finally {
             this.els.jdConfirm.disabled = false;
+        }
+    }
+
+    // 金額（1口の値段・各等の賞金）を後から変更する
+    _openJumboEdit(id) {
+        if (!this._isAdmin()) return this._toast('管理者のみ利用できます', 'error');
+        const d = (this._adminJumbo || this._jumboDraws || []).find(x => (x.id || x._key) === id);
+        if (!d) return;
+        this._editingJumboId = id;
+        this.els.jeTitle.textContent = d.name;
+        this.els.jePrice.value = d.ticketPrice || '';
+        [1, 2, 3, 4, 5, 6, 7, 8].forEach(n => { this.els['jePrize' + n].value = (d['prize' + n] || 0) || ''; });
+        this._hide(this.els.jeError);
+        this._show(this.els.jumboEditModal);
+    }
+
+    async _saveJumboEdit() {
+        const id = this._editingJumboId;
+        const d = (this._adminJumbo || this._jumboDraws || []).find(x => (x.id || x._key) === id);
+        if (!d) return;
+        this._hide(this.els.jeError);
+        const price = this._intOrNull(this.els.jePrice.value);
+        if (!price || price < 1) return this._showError(this.els.jeError, '1口の値段（1以上）を入力してください。');
+        const prizes = [1, 2, 3, 4, 5, 6, 7, 8].map(n => this._intOrNull(this.els['jePrize' + n].value) || 0);
+        if (prizes.reduce((a, b) => a + b, 0) <= 0) return this._showError(this.els.jeError, '少なくとも1つの賞金を設定してください。');
+
+        this.els.jeSave.disabled = true;
+        try {
+            const upd = { ticketPrice: price };
+            prizes.forEach((v, i) => { upd['prize' + (i + 1)] = v; });
+            await this.bankDb.ref('jumbo/' + id).update(upd);
+            this._toast('金額を変更しました', 'success');
+            this.els.jumboEditModal.hidden = true;
+        } catch (e) {
+            this._showError(this.els.jeError, '変更に失敗しました: ' + (e.message || ''));
+        } finally {
+            this.els.jeSave.disabled = false;
         }
     }
 
