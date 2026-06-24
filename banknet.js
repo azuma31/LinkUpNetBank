@@ -490,7 +490,8 @@ class LinkUpNetBank {
     _watchLedger() {
         this.bankDb.ref('userLedger/' + this.uid).on('value', snap => {
             const obj = snap.val() || {};
-            this.txCache = Object.values(obj).sort((a, b) => b.ts - a.ts);
+            // ジャンボ宝くじ関連は取引画面に表示しない（記録は残す）
+            this.txCache = Object.values(obj).filter(t => t && t.type !== 'jumbo').sort((a, b) => b.ts - a.ts);
             this._renderRecent();
             if (!this.els.historyModal.hidden) this._renderHistory();
         });

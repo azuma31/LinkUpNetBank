@@ -64,13 +64,13 @@ window.BANK_CENTRAL_NAME = '中央銀行';     // 不足分の補填元
 // QUICKONE（いつでもスクラッチ宝くじ）
 //  - cost: 1回の掛け金（W）
 //  - tiers: 当選テーブル。prize = cost × mult。weight は抽選の重み（合計に対する割合で確率が決まる）
-//  現在: 還元率 ≒ 59%  → (30×3 + 5×40 + 2×150) / 1000 = 590/1000
+//  現在: 1等1% / 2等4% / 3等15% / はずれ80%  → 還元率 (30×10 + 5×40 + 2×150)/1000 = 800/1000 = 80%
 window.BANK_QUICKONE = {
     cost: 10,
     tiers: [
-        { label: '1等',   mult: 30, weight: 10   }, // 1.0%  → 300 W
+        { label: '1等',   mult: 30, weight: 10  }, // 1.0%  → 300 W
         { label: '2等',   mult: 5,  weight: 40  }, // 4.0%  → 50 W
         { label: '3等',   mult: 2,  weight: 150 }, // 15.0% → 20 W
-        { label: 'はずれ', mult: 0,  weight: 800 }  // 80.7%
+        { label: 'はずれ', mult: 0,  weight: 800 }  // 80.0%
     ]
 };

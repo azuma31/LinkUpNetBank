@@ -665,3 +665,6 @@ b { font-weight: 600; }
 /* QUICKONE: 賞金表の口数注記 */
 .qo-prizenote { margin-top:10px; font-size:.72rem; color:var(--faint); line-height:1.5; text-align:center; }
 .qo-prizenote:empty { display:none; }
+
+/* 確認ダイアログは常に他モーダルより前面に表示する */
+#confirmModal { z-index: 150; }
