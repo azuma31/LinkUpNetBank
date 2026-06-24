@@ -125,7 +125,7 @@ class LinkUpNetBank {
             // ===== ギャンブル =====
             gambleModal: id('gambleModal'), gambleHouseInfo: id('gambleHouseInfo'),
             // QUICKONE
-            quickoneModal: id('quickoneModal'), quickoneCost: id('quickoneCost'), quickoneQty: id('quickoneQty'),
+            quickoneModal: id('quickoneModal'), quickoneCost: id('quickoneCost'), quickoneBet: id('quickoneBet'),
             quickoneTable: id('quickoneTable'), quickoneResult: id('quickoneResult'), quickonePlay: id('quickonePlay'),
             quickonePrizeNote: id('quickonePrizeNote'),
             // ジャンボ（利用者）
@@ -205,12 +205,12 @@ class LinkUpNetBank {
 
     _bindGambleEvents() {
         if (this.els.quickonePlay) this.els.quickonePlay.addEventListener('click', () => this._playQuickone());
-        if (this.els.quickoneQty) {
-            this.els.quickoneQty.addEventListener('input', () => this._updateQuickoneCost());
-            this.els.quickoneQty.addEventListener('blur', () => { this.els.quickoneQty.value = this._quickoneQty(); this._updateQuickoneCost(); });
+        if (this.els.quickoneBet) {
+            this.els.quickoneBet.addEventListener('input', () => this._updateQuickoneCost());
+            this.els.quickoneBet.addEventListener('blur', () => { this.els.quickoneBet.value = this._quickoneBet(); this._updateQuickoneCost(); });
         }
         document.querySelectorAll('.qo-chip').forEach(c => c.addEventListener('click', () => {
-            if (this.els.quickoneQty) { this.els.quickoneQty.value = c.dataset.qty; this._updateQuickoneCost(); }
+            if (this.els.quickoneBet) { this.els.quickoneBet.value = c.dataset.bet; this._updateQuickoneCost(); }
         }));
         if (this.els.openJumboCreate) this.els.openJumboCreate.addEventListener('click', () => this._openJumboCreate());
         if (this.els.jcCreate) this.els.jcCreate.addEventListener('click', () => this._createJumboDraw());
@@ -1463,15 +1463,22 @@ class LinkUpNetBank {
         this._show(this.els.quickoneModal);
     }
 
-    // 賞金は「選んだ口数」に応じて表示額を変える（全口当選時の最高額）
+    // 選んだベット倍率（1〜1000）
+    _quickoneBet() {
+        let n = parseInt(this.els.quickoneBet && this.els.quickoneBet.value, 10);
+        if (!Number.isFinite(n)) n = 1;
+        return Math.max(1, Math.min(1000, n));
+    }
+
+    // 賞金表は「選んだベット倍率」に比例して表示額が変わる（当選時はこの金額がそのまま支払われる）
     _renderQuickoneTable() {
         if (!this.els.quickoneTable) return;
         const cfg = this._quickoneCfg();
-        const qty = this._quickoneQty();
+        const bet = this._quickoneBet();
         const winners = cfg.tiers.filter(t => t.mult > 0);
         const total = cfg.tiers.reduce((s, t) => s + (t.weight || 0), 0) || 1;
         this.els.quickoneTable.innerHTML = winners.map(t => {
-            const prize = cfg.cost * t.mult * qty;
+            const prize = cfg.cost * t.mult * bet;
             const pct = (t.weight || 0) / total * 100;
             const pctLabel = pct >= 1 ? pct.toFixed(0) : pct.toFixed(1);
             return `<li class="qo-tier">
@@ -1482,25 +1489,19 @@ class LinkUpNetBank {
             </li>`;
         }).join('');
         if (this.els.quickonePrizeNote) {
-            this.els.quickonePrizeNote.textContent = qty > 1
-                ? `※ ${qty}口すべて同じ等に当選した場合の最高額です（1口あたり ${this._fmt(cfg.cost)} W × 倍率）`
+            this.els.quickonePrizeNote.textContent = bet > 1
+                ? `※ ベット ×${bet} 時の当選金です（掛け金 ${this._fmt(cfg.cost * bet)} W）`
                 : '';
         }
     }
 
-    _quickoneQty() {
-        let n = parseInt(this.els.quickoneQty && this.els.quickoneQty.value, 10);
-        if (!Number.isFinite(n)) n = 1;
-        return Math.max(1, Math.min(1000, n));
-    }
-
     _updateQuickoneCost() {
-        this._renderQuickoneTable(); // 口数に応じて賞金表も更新
+        this._renderQuickoneTable(); // ベット倍率に応じて賞金表も更新
         if (!this.els.quickonePlay || this.els.quickonePlay.disabled) return;
         const cfg = this._quickoneCfg();
-        const qty = this._quickoneQty();
-        const total = cfg.cost * qty;
-        const label = qty > 1 ? `${qty}口 ${this._fmt(total)} W` : `${this._fmt(total)} W`;
+        const bet = this._quickoneBet();
+        const total = cfg.cost * bet;
+        const label = bet > 1 ? `×${bet}（${this._fmt(total)} W）` : `${this._fmt(total)} W`;
         this.els.quickonePlay.innerHTML = this._qoPlayed
             ? `<i class="fa-solid fa-rotate-right"></i> もう一度（${label}）`
             : `<i class="fa-solid fa-wand-magic-sparkles"></i> ${label} でけずる`;
@@ -1517,80 +1518,46 @@ class LinkUpNetBank {
     async _playQuickone() {
         const cfg = this._quickoneCfg();
         const cost = cfg.cost;
-        const qty = this._quickoneQty();
-        const totalCost = cost * qty;
-        if (this.els.quickoneQty) this.els.quickoneQty.value = qty; // 範囲を正規化して反映
+        const bet = this._quickoneBet();
+        const stake = cost * bet;
+        if (this.els.quickoneBet) this.els.quickoneBet.value = bet; // 範囲を正規化して反映
         if (!this.account || this.account.frozen) return this._toast('口座が凍結されています', 'error');
-        if ((this.account.balance || 0) < totalCost) return this._toast(`残高が足りません（${this._fmt(totalCost)} W 必要）`, 'error');
+        if ((this.account.balance || 0) < stake) return this._toast(`残高が足りません（${this._fmt(stake)} W 必要）`, 'error');
 
         this.els.quickonePlay.disabled = true;
         this.els.quickoneResult.className = 'qo-result is-spinning';
         this.els.quickoneResult.innerHTML = `<span class="qo-spin"><i class="fa-solid fa-dice"></i></span>`;
 
-        // 掛け金を一括で回収（履歴には残さない）
-        const staked = await this._collectStake(totalCost, 'QUICKONE 購入', 'quickone');
-        if (!staked) { this._toast('購入処理に失敗しました。もう一度お試しください。', 'error'); this._qoPlayed = false; this._resetQuickoneStage(); return; }
+        // 掛け金（= 1回 × ベット倍率）を回収（履歴には残さない）
+        const staked = await this._collectStake(stake, 'QUICKONE 購入', 'quickone');
+        if (!staked) { this._toast('購入処理に失敗しました。もう一度お試しください。', 'error'); this._resetQuickoneStage(); return; }
 
-        // qty 回ぶん抽選し、等級ごとに集計
-        const counts = {};       // label -> 当選口数
-        let totalPrize = 0, winCount = 0, lastWinTier = null;
-        for (let i = 0; i < qty; i++) {
-            const tier = this._drawWeighted(cfg.tiers);
-            if (tier.mult > 0) {
-                totalPrize += cost * tier.mult;
-                winCount++;
-                lastWinTier = tier;
-                counts[tier.label] = (counts[tier.label] || 0) + 1;
-            }
-        }
+        // 1回だけ抽選し、単一の結果（1等/2等/3等/はずれ）を出す。当選金はベット倍率に比例。
+        const tier = this._drawWeighted(cfg.tiers);
+        const prize = tier.mult > 0 ? cost * tier.mult * bet : 0;
 
         await new Promise(r => setTimeout(r, 850)); // 演出
 
         let paid = 0;
-        if (totalPrize > 0) {
-            const memo = qty > 1 ? `QUICKONE 当選（${winCount}口）` : `QUICKONE ${lastWinTier.label} 当選`;
-            paid = await this._payPrize(this.uid, this.name, totalPrize, 'quickone', memo);
-        }
+        if (prize > 0) paid = await this._payPrize(this.uid, this.name, prize, 'quickone', `QUICKONE ${tier.label} 当選`);
 
-        this._renderQuickoneResult({ qty, totalCost, winCount, paid, totalPrize, counts });
+        const betLabel = bet > 1 ? `<span class="qo-result__sub">ベット ×${bet} ・ 掛け金 ${this._fmt(stake)} W</span>` : '';
+        if (prize > 0) {
+            this.els.quickoneResult.className = 'qo-result is-win';
+            this.els.quickoneResult.innerHTML =
+                `<span class="qo-result__rank">${this._esc(tier.label)} 当選！</span>
+                 <span class="qo-result__amt">+${this._fmt(paid)} W</span>${betLabel}`;
+            if (paid < prize) this._toast('運営の残高が不足し、一部のみの支払いです。管理者に連絡してください。', 'error', 5000);
+            else this._toast(`${tier.label} 当選！ +${this._fmt(paid)} W`, 'success', 4000);
+        } else {
+            this.els.quickoneResult.className = 'qo-result is-lose';
+            this.els.quickoneResult.innerHTML = `<span class="qo-result__rank">はずれ</span>${betLabel || '<span class="qo-result__sub">また挑戦してね</span>'}`;
+        }
 
         this._qoPlayed = true;
         this.els.quickonePlay.disabled = false;
         this._updateQuickoneCost();
         this._refreshHouseChips();
-    }
-
-    _renderQuickoneResult({ qty, totalCost, winCount, paid, totalPrize, counts }) {
-        const won = paid > 0;
-        const cfg = this._quickoneCfg();
-
-        if (qty === 1) {
-            if (won) {
-                const label = Object.keys(counts)[0] || '当選';
-                this.els.quickoneResult.className = 'qo-result is-win';
-                this.els.quickoneResult.innerHTML =
-                    `<span class="qo-result__rank">${this._esc(label)} 当選！</span>
-                     <span class="qo-result__amt">+${this._fmt(paid)} W</span>`;
-            } else {
-                this.els.quickoneResult.className = 'qo-result is-lose';
-                this.els.quickoneResult.innerHTML = `<span class="qo-result__rank">はずれ</span><span class="qo-result__sub">また挑戦してね</span>`;
-            }
-        } else {
-            // 複数口: 集計サマリー
-            const order = cfg.tiers.filter(t => t.mult > 0).map(t => t.label);
-            const chips = order.filter(l => counts[l]).map(l => `<span class="qo-bd qo-bd--win">${this._esc(l)} ×${counts[l]}</span>`);
-            chips.push(`<span class="qo-bd">はずれ ×${qty - winCount}</span>`);
-            const net = paid - totalCost;
-            const netLabel = (net >= 0 ? '+' : '−') + this._fmt(Math.abs(net));
-            this.els.quickoneResult.className = won ? 'qo-result is-win' : 'qo-result is-lose';
-            this.els.quickoneResult.innerHTML =
-                `<span class="qo-result__rank">${winCount > 0 ? `当選 ${winCount}口！` : '当選なし'}</span>
-                 <span class="qo-result__amt">払戻 +${this._fmt(paid)} W</span>
-                 <div class="qo-breakdown">${chips.join('')}</div>
-                 <span class="qo-result__sub">${qty}口 ・ 掛け金 ${this._fmt(totalCost)} W ・ 収支 ${netLabel} W</span>`;
-        }
-        if (won && paid < totalPrize) this._toast('運営の残高が不足し、一部のみの支払いです。管理者に連絡してください。', 'error', 5000);
-        else if (won) this._toast(`当選！ +${this._fmt(paid)} W`, 'success', 4000);
     }
 
     // =====================================================

@@ -58,7 +58,7 @@
         <nav class="snav">
             <button class="snav__item is-active" data-action="home"><i class="fa-solid fa-table-columns"></i><span>ダッシュボード</span></button>
             <button class="snav__item" data-action="subs"><i class="fa-solid fa-rotate"></i><span>サブスク</span></button>
-            <button class="snav__item" data-action="gamble"><i class="fa-solid fa-dice"></i><span>賭博・宝くじ</span></button>
+            <button class="snav__item" data-action="gamble"><i class="fa-solid fa-dice"></i><span>宝くじ</span></button>
             <button class="snav__item" data-action="history"><i class="fa-solid fa-clock-rotate-left"></i><span>取引履歴</span></button>
             <button class="snav__item js-admin-only" data-action="admin" hidden><i class="fa-solid fa-shield-halved"></i><span>管理</span></button>
             <button class="snav__item" data-action="settings"><i class="fa-solid fa-gear"></i><span>設定</span></button>
@@ -156,7 +156,7 @@
         <button class="tabbar__item is-active" data-action="home"><i class="fa-solid fa-house"></i><span>ホーム</span></button>
         <button class="tabbar__item" data-action="send"><i class="fa-solid fa-paper-plane"></i><span>送る</span></button>
         <button class="tabbar__item" data-action="subs"><i class="fa-solid fa-rotate"></i><span>サブスク</span></button>
-        <button class="tabbar__item" data-action="gamble"><i class="fa-solid fa-dice"></i><span>賭博・宝くじ</span></button>
+        <button class="tabbar__item" data-action="gamble"><i class="fa-solid fa-dice"></i><span>宝くじ</span></button>
         <button class="tabbar__item" data-action="history"><i class="fa-solid fa-clock-rotate-left"></i><span>履歴</span></button>
         <button class="tabbar__item js-admin-only" data-action="admin" hidden><i class="fa-solid fa-shield-halved"></i><span>管理</span></button>
     </nav>
@@ -433,19 +433,19 @@
         <div class="modal__body">
             <div id="quickoneResult" class="qo-result"></div>
             <div class="qo-qty">
-                <label for="quickoneQty">口数（最大 1000 口）</label>
+                <label for="quickoneBet">ベット倍率（最大 ×1000）</label>
                 <div class="qo-qty__row">
-                    <input id="quickoneQty" type="number" min="1" max="1000" step="1" value="1" inputmode="numeric">
+                    <input id="quickoneBet" type="number" min="1" max="1000" step="1" value="1" inputmode="numeric">
                     <div class="qo-qty__chips">
-                        <button type="button" class="qo-chip" data-qty="1">1</button>
-                        <button type="button" class="qo-chip" data-qty="10">10</button>
-                        <button type="button" class="qo-chip" data-qty="100">100</button>
-                        <button type="button" class="qo-chip" data-qty="1000">1000</button>
+                        <button type="button" class="qo-chip" data-bet="1">×1</button>
+                        <button type="button" class="qo-chip" data-bet="10">×10</button>
+                        <button type="button" class="qo-chip" data-bet="100">×100</button>
+                        <button type="button" class="qo-chip" data-bet="1000">×1000</button>
                     </div>
                 </div>
             </div>
             <button id="quickonePlay" class="btn btn--primary btn--block qo-play"></button>
-            <p class="muted-note" style="text-align:center;margin-top:10px">1口 <b id="quickoneCost">—</b> W ・ 結果はその場で確定します</p>
+            <p class="muted-note" style="text-align:center;margin-top:10px">基本 1回 <b id="quickoneCost">—</b> W ・ ベット倍率に応じて掛け金と当選金が増えます</p>
             <div class="qo-tablehead"><span>当選</span><span>倍率</span><span>賞金</span><span>確率</span></div>
             <ul id="quickoneTable" class="qo-table"></ul>
             <p id="quickonePrizeNote" class="qo-prizenote"></p>
