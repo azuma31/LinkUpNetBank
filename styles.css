@@ -668,3 +668,19 @@ b { font-weight: 600; }
 
 /* 確認ダイアログは常に他モーダルより前面に表示する */
 #confirmModal { z-index: 150; }
+
+/* ジャンボ: おまかせ一括購入 */
+.jb-bulk { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:8px; padding-top:10px; border-top:1px dashed var(--line); }
+.jb-bulk__label { font-size:.78rem; font-weight:700; color:var(--ink-soft); display:flex; align-items:center; gap:6px; }
+.jb-bulk__label i { color:var(--gold-2); }
+.jb-bulkqty {
+    width:72px; background:var(--surface); border:1px solid var(--line-2); border-radius:var(--r-sm);
+    color:var(--ink); font:inherit; font-family:var(--num); font-size:1rem; text-align:center; padding:9px 8px;
+    font-variant-numeric:tabular-nums;
+}
+.jb-bulkqty:focus { outline:none; border-color:var(--ink); box-shadow:0 0 0 3px rgba(19,24,35,.08); }
+.jb-bulk__unit { font-size:.8rem; color:var(--muted); margin-left:-4px; }
+.jb-bulk__chip { flex:none; padding:8px 12px; }
+.jb-bulk .btn { flex:none; margin-left:auto; }
+@media (max-width: 860px) { .jb-bulkqty { font-size:16px; } }
+@media (max-width: 380px) { .jb-bulk .btn { margin-left:0; width:100%; } }

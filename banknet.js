@@ -1633,6 +1633,21 @@ class LinkUpNetBank {
                 if (draw && inp) inp.value = this._randomDigits(draw.digits);
             });
         });
+        this.els.jumboList.querySelectorAll('[data-bulkset]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const id = btn.dataset.bulkset;
+                const inp = this.els.jumboList.querySelector(`input[data-bulk="${id}"]`);
+                if (inp) inp.value = btn.dataset.q;
+            });
+        });
+        this.els.jumboList.querySelectorAll('[data-bulkbuy]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const id = btn.dataset.bulkbuy;
+                const draw = (this._jumboDraws || []).find(x => (x.id || x._key) === id);
+                const inp = this.els.jumboList.querySelector(`input[data-bulk="${id}"]`);
+                if (draw && inp) this._buyJumboBulk(draw, parseInt(inp.value, 10));
+            });
+        });
     }
 
     _jumboCard(d, my, all) {
@@ -1667,6 +1682,14 @@ class LinkUpNetBank {
                 <input type="text" inputmode="numeric" data-num="${this._esc(id)}" maxlength="${d.digits}" placeholder="${'0'.repeat(d.digits)}" class="jb-num">
                 <button class="btn btn--ghost btn--small" data-rand="${this._esc(id)}">おまかせ</button>
                 <button class="btn btn--primary btn--small" data-buy="${this._esc(id)}">1口 ${this._fmt(d.ticketPrice)} W</button>
+            </div>
+            <div class="jb-bulk">
+                <span class="jb-bulk__label"><i class="fa-solid fa-shuffle"></i> おまかせ一括</span>
+                <input type="number" class="jb-bulkqty" data-bulk="${this._esc(id)}" min="1" max="1000" step="1" value="10" inputmode="numeric">
+                <span class="jb-bulk__unit">口</span>
+                <button type="button" class="qo-chip jb-bulk__chip" data-bulkset="${this._esc(id)}" data-q="10">10</button>
+                <button type="button" class="qo-chip jb-bulk__chip" data-bulkset="${this._esc(id)}" data-q="100">100</button>
+                <button class="btn btn--primary btn--small" data-bulkbuy="${this._esc(id)}">まとめて購入</button>
             </div>`;
         }
 
@@ -1741,8 +1764,41 @@ class LinkUpNetBank {
         }
     }
 
-    // =====================================================
-    // ジャンボ宝くじ — 管理（開催 / 抽選 / 支払い）
+    // おまかせ一括購入（ランダムな番号で複数口を一度に・上限1000）
+    async _buyJumboBulk(draw, qtyRaw) {
+        const id = draw.id || draw._key;
+        if (draw.status !== 'open') return this._toast('この宝くじは販売していません', 'error');
+        let qty = parseInt(qtyRaw, 10);
+        if (!Number.isFinite(qty) || qty < 1) qty = 1;
+        qty = Math.min(1000, qty);
+        if (!this.account || this.account.frozen) return this._toast('口座が凍結されています', 'error');
+        const total = draw.ticketPrice * qty;
+        if ((this.account.balance || 0) < total) return this._toast(`残高が足りません（${this._fmt(total)} W 必要）`, 'error');
+
+        const ok = await this._confirm(`「${draw.name}」をおまかせ（ランダム番号）で ${qty}口、合計 ${this._fmt(total)} W で購入しますか？`);
+        if (!ok) return;
+
+        // 券をまとめて生成（プッシュキーはクライアントで採番し、1回のupdateで書き込む）
+        const base = this.bankDb.ref('jumboTickets/' + id);
+        const updates = {};
+        for (let i = 0; i < qty; i++) {
+            const key = base.push().key;
+            updates[key] = { id: key, drawId: id, uid: this.uid, name: this.name, number: this._randomDigits(draw.digits), ts: Date.now() };
+        }
+
+        const staked = await this._collectStake(total, `${draw.name} おまかせ${qty}口`, 'jumbo');
+        if (!staked) return this._toast('購入に失敗しました', 'error');
+
+        try {
+            await base.update(updates);
+            this._toast(`おまかせで ${qty}口 購入しました`, 'success', 4000);
+            this._renderJumbo();
+        } catch (e) {
+            // 失敗時は掛け金を返金
+            try { const h = await this._houseAccount(); if (h) await this._payFromSource(h, this.uid, this.name, total, 'jumbo', `${draw.name} 返金`); } catch (_) {}
+            this._toast('購入に失敗しました。返金しました。', 'error');
+        }
+    }
     // =====================================================
     _watchAdminJumbo() {
         this.bankDb.ref('jumbo').on('value', snap => {
