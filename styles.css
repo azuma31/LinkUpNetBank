@@ -684,3 +684,8 @@ b { font-weight: 600; }
 .jb-bulk .btn { flex:none; margin-left:auto; }
 @media (max-width: 860px) { .jb-bulkqty { font-size:16px; } }
 @media (max-width: 380px) { .jb-bulk .btn { margin-left:0; width:100%; } }
+
+/* ジャンボ: 自分の券（件数＋ボタン）と番号テキスト表示 */
+.jb-mine__row { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+.jb-mine__win { color:var(--gold-2); font-weight:700; }
+.jb-numtext { font-family:var(--num); font-size:.92rem; line-height:1.9; color:var(--ink-soft); word-break:break-word; font-variant-numeric:tabular-nums; }

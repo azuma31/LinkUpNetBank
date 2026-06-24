@@ -130,6 +130,8 @@ class LinkUpNetBank {
             quickonePrizeNote: id('quickonePrizeNote'),
             // ジャンボ（利用者）
             jumboModal: id('jumboModal'), jumboList: id('jumboList'), jumboEmpty: id('jumboEmpty'),
+            jumboTicketsModal: id('jumboTicketsModal'), myTicketsTitle: id('myTicketsTitle'),
+            myTicketsSummary: id('myTicketsSummary'), myTicketsBody: id('myTicketsBody'),
             // ジャンボ管理: 一覧 / 残高
             openJumboCreate: id('openJumboCreate'),
             adminJumboList: id('adminJumboList'), adminJumboEmpty: id('adminJumboEmpty'),
@@ -1579,19 +1581,37 @@ class LinkUpNetBank {
         });
     }
 
-    async _fetchJumboTickets() {
-        const byDraw = {}; // drawId -> [tickets]
+    // 全券を1回だけ走査し、表示に必要な「軽いサマリー」だけを作る。
+    //  - summary[drawId]: { sales, myCount, myWins{1,2,3}, myWinTotal }
+    //  - mine[drawId]:    自分の券 [{number, tier}]（一覧モーダル用）
+    //  - winners[drawId]: 当選券のみ [{name, number, tier}]（抽選済みのみ）
+    async _scanJumboTickets(draws) {
+        const drawMap = {};
+        (draws || []).forEach(d => { drawMap[d.id || d._key] = d; });
+        const summary = {}, mine = {}, winners = {};
         try {
             const snap = await this.bankDb.ref('jumboTickets').get();
             if (snap.exists()) {
                 snap.forEach(drawCh => {
-                    const arr = [];
-                    drawCh.forEach(tCh => { const t = tCh.val(); if (t) arr.push({ ...t, _key: tCh.key }); });
-                    byDraw[drawCh.key] = arr;
+                    const did = drawCh.key;
+                    const d = drawMap[did];
+                    const drawn = d && d.status === 'drawn';
+                    if (!summary[did]) summary[did] = { sales: 0, myCount: 0, myWins: { 1: 0, 2: 0, 3: 0 }, myWinTotal: 0 };
+                    drawCh.forEach(tCh => {
+                        const t = tCh.val(); if (!t) return;
+                        summary[did].sales++;
+                        const tier = (drawn && d) ? this._jumboTier(d, t.number) : 0;
+                        if (drawn && tier > 0) (winners[did] = winners[did] || []).push({ name: t.name, number: t.number, tier });
+                        if (t.uid === this.uid) {
+                            summary[did].myCount++;
+                            (mine[did] = mine[did] || []).push({ number: t.number, tier });
+                            if (tier > 0) { summary[did].myWins[tier]++; summary[did].myWinTotal++; }
+                        }
+                    });
                 });
             }
         } catch (_) {}
-        return byDraw;
+        return { summary, mine, winners };
     }
 
     // 当選番号は等ごとに複数指定できる（スペース/カンマ/読点区切り）
@@ -1608,14 +1628,16 @@ class LinkUpNetBank {
 
     async _renderJumbo() {
         const draws = this._jumboDraws || [];
-        const byDraw = await this._fetchJumboTickets();
+        const { summary, mine, winners } = await this._scanJumboTickets(draws);
+        this._jumboMine = mine;        // 一覧モーダル用に保持
+        this._jumboWinners = winners;  // （未使用だが保持）
         const idOf = d => d.id || d._key;
-        const mineOf = id => (byDraw[id] || []).filter(t => t.uid === this.uid);
+        const sumOf = id => summary[id] || { sales: 0, myCount: 0, myWins: { 1: 0, 2: 0, 3: 0 }, myWinTotal: 0 };
         // 販売終了でも自分の券があれば表示
-        const visible = draws.filter(d => d.status !== 'closed' || mineOf(idOf(d)).length);
+        const visible = draws.filter(d => d.status !== 'closed' || sumOf(idOf(d)).myCount > 0);
 
         this.els.jumboEmpty.hidden = visible.length > 0;
-        this.els.jumboList.innerHTML = visible.map(d => this._jumboCard(d, mineOf(idOf(d)), byDraw[idOf(d)] || [])).join('');
+        this.els.jumboList.innerHTML = visible.map(d => this._jumboCard(d, sumOf(idOf(d)), winners[idOf(d)] || [])).join('');
 
         this.els.jumboList.querySelectorAll('[data-buy]').forEach(btn => {
             btn.addEventListener('click', () => {
@@ -1648,9 +1670,12 @@ class LinkUpNetBank {
                 if (draw && inp) this._buyJumboBulk(draw, parseInt(inp.value, 10));
             });
         });
+        this.els.jumboList.querySelectorAll('[data-mytickets]').forEach(btn => {
+            btn.addEventListener('click', () => this._openMyTickets(btn.dataset.mytickets));
+        });
     }
 
-    _jumboCard(d, my, all) {
+    _jumboCard(d, sum, winners) {
         const id = d.id || d._key;
         const drawn = d.status === 'drawn';
         const closed = d.status === 'closed';
@@ -1663,17 +1688,18 @@ class LinkUpNetBank {
             `</div>`
         ).join('');
 
+        // 自分の券は「件数＋ボタン」だけ表示（重くならないように一覧は出さない）
         let mine = '';
-        if (my.length) {
-            const chips = my.map(t => {
-                if (drawn) {
-                    const tier = this._jumboTier(d, t.number);
-                    if (tier > 0) return `<span class="jb-ticket is-win">${this._esc(t.number)} <b>${tier}等</b></span>`;
-                    return `<span class="jb-ticket is-lose">${this._esc(t.number)}</span>`;
-                }
-                return `<span class="jb-ticket">${this._esc(t.number)}</span>`;
-            }).join('');
-            mine = `<div class="jb-mine"><div class="jb-mine__title">あなたの券（${my.length}）</div><div class="jb-tickets">${chips}</div></div>`;
+        if (sum.myCount > 0) {
+            const winLabel = (drawn && sum.myWinTotal > 0)
+                ? ` ・ <span class="jb-mine__win">当選 ${sum.myWinTotal}口</span>`
+                : (drawn ? ' ・ 当選なし' : '');
+            mine = `<div class="jb-mine">
+                <div class="jb-mine__row">
+                    <span class="jb-mine__title">あなたの券：${sum.myCount}口${winLabel}</span>
+                    <button class="btn btn--ghost btn--small" data-mytickets="${this._esc(id)}">購入した券を表示</button>
+                </div>
+            </div>`;
         }
 
         let buy = '';
@@ -1693,25 +1719,25 @@ class LinkUpNetBank {
             </div>`;
         }
 
-        // 当選者一覧（抽選済みのみ・全員が閲覧可）
-        let winners = '';
+        // 当選者一覧（抽選済みのみ・全員が閲覧可）。多すぎる場合は先頭のみ描画。
+        let winnersHtml = '';
         if (drawn) {
-            const wins = (all || [])
-                .map(t => ({ t, tier: this._jumboTier(d, t.number) }))
-                .filter(x => x.tier > 0)
-                .sort((a, b) => a.tier - b.tier);
-            const rows = wins.map(({ t, tier }) =>
+            const wins = (winners || []).slice().sort((a, b) => a.tier - b.tier);
+            const CAP = 200;
+            const shown = wins.slice(0, CAP);
+            const rows = shown.map(w =>
                 `<li class="jb-winner">
-                    <span class="jb-winner__rank jb-winner__rank--${tier}">${tier}等</span>
-                    <span class="jb-winner__name">${this._esc(t.name || '不明')}</span>
-                    <span class="jb-winner__num">${this._esc(t.number)}</span>
-                    <span class="jb-winner__prize">${this._fmt(d['prize' + tier] || 0)} W</span>
+                    <span class="jb-winner__rank jb-winner__rank--${w.tier}">${w.tier}等</span>
+                    <span class="jb-winner__name">${this._esc(w.name || '不明')}</span>
+                    <span class="jb-winner__num">${this._esc(w.number)}</span>
+                    <span class="jb-winner__prize">${this._fmt(d['prize' + w.tier] || 0)} W</span>
                 </li>`
             ).join('');
+            const more = wins.length > CAP ? `<li class="muted-note" style="padding:8px 11px">ほか ${wins.length - CAP} 名…</li>` : '';
             const body = wins.length
-                ? `<ul class="jb-winners">${rows}</ul>`
+                ? `<ul class="jb-winners">${rows}${more}</ul>`
                 : `<p class="muted-note" style="margin:8px 0 4px">当選者はいませんでした。</p>`;
-            winners = `<details class="jb-details">
+            winnersHtml = `<details class="jb-details">
                 <summary class="jb-summary"><i class="fa-solid fa-trophy"></i> 当選者を見る（${wins.length}名）</summary>
                 ${body}
             </details>`;
@@ -1727,12 +1753,50 @@ class LinkUpNetBank {
                 <span class="jb-card__name">${this._esc(d.name)}</span>
                 ${statusBadge}
             </div>
-            <div class="jb-card__meta">${d.digits}桁の番号 ・ 1口 ${this._fmt(d.ticketPrice)} W ・ 販売 ${(all || []).length}口</div>
+            <div class="jb-card__meta">${d.digits}桁の番号 ・ 1口 ${this._fmt(d.ticketPrice)} W ・ 販売 ${sum.sales}口</div>
             <div class="jb-prizes">${prizeRows || '<span class="muted-note">賞金は未設定です</span>'}</div>
             ${buy}
             ${mine}
-            ${winners}
+            ${winnersHtml}
         </li>`;
+    }
+
+    // 「購入した券を表示」モーダル。番号は軽量に（当選券はチップ、その他はまとめて表示）。
+    _openMyTickets(drawId) {
+        const d = (this._jumboDraws || []).find(x => (x.id || x._key) === drawId);
+        const list = (this._jumboMine && this._jumboMine[drawId]) || [];
+        if (!d) return;
+        const drawn = d.status === 'drawn';
+        this.els.myTicketsTitle.textContent = d.name;
+
+        const winCount = list.filter(t => t.tier > 0).length;
+        this.els.myTicketsSummary.textContent = `購入 ${list.length}口` + (drawn ? ` ・ 当選 ${winCount}口` : '');
+
+        let html = '';
+        if (drawn) {
+            const wins = list.filter(t => t.tier > 0).sort((a, b) => a.tier - b.tier);
+            if (wins.length) {
+                const chips = wins.map(t => `<span class="jb-ticket is-win">${this._esc(t.number)} <b>${t.tier}等</b></span>`).join('');
+                html += `<div class="jb-mine__title" style="margin-bottom:6px">当選した券</div><div class="jb-tickets">${chips}</div>`;
+            }
+            const losers = list.filter(t => t.tier === 0).map(t => t.number);
+            html += `<div class="jb-mine__title" style="margin:14px 0 6px">はずれの番号（${losers.length}）</div>`;
+            html += `<p class="jb-numtext">${this._renderNumText(losers)}</p>`;
+        } else {
+            const nums = list.map(t => t.number);
+            html += `<div class="jb-mine__title" style="margin-bottom:6px">購入した番号（${nums.length}）</div>`;
+            html += `<p class="jb-numtext">${this._renderNumText(nums)}</p>`;
+        }
+        this.els.myTicketsBody.innerHTML = html || '<p class="empty">券がありません。</p>';
+        this._show(this.els.jumboTicketsModal);
+    }
+
+    // 大量の番号は個別DOMにせずテキストで表示（上限を超えたら省略）
+    _renderNumText(nums) {
+        const CAP = 3000;
+        const shown = nums.slice(0, CAP).map(n => this._esc(n)).join('、');
+        const more = nums.length > CAP ? ` …ほか ${nums.length - CAP} 件` : '';
+        return shown ? shown + more : '—';
     }
 
     async _buyJumboTicket(draw, number) {
