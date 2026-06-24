@@ -68,9 +68,9 @@ window.BANK_CENTRAL_NAME = '中央銀行';     // 不足分の補填元
 window.BANK_QUICKONE = {
     cost: 10,
     tiers: [
-        { label: '1等',   mult: 30, weight: 3   }, // 0.3%  → 300 W
+        { label: '1等',   mult: 30, weight: 10   }, // 1.0%  → 300 W
         { label: '2等',   mult: 5,  weight: 40  }, // 4.0%  → 50 W
         { label: '3等',   mult: 2,  weight: 150 }, // 15.0% → 20 W
-        { label: 'はずれ', mult: 0,  weight: 807 }  // 80.7%
+        { label: 'はずれ', mult: 0,  weight: 800 }  // 80.7%
     ]
 };
