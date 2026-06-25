@@ -1523,6 +1523,62 @@ class LinkUpNetBank {
     }
 
     // =====================================================
+    // ジャンボ：番号の重複防止（他アカウント含め1番号1枚）
+    // =====================================================
+    // 既に売れている番号の集合を返す（旧データの券も走査して拾う）。
+    async _jumboTakenSet(drawId) {
+        const set = new Set();
+        try {
+            const snap = await this.bankDb.ref('jumboTickets/' + drawId).get();
+            if (snap.exists()) snap.forEach(ch => { const t = ch.val(); if (t && t.number != null) set.add(String(t.number)); });
+        } catch (_) {}
+        try {
+            const isnap = await this.bankDb.ref('jumboNumbers/' + drawId).get();
+            if (isnap.exists()) isnap.forEach(ch => { if (ch.val()) set.add(String(ch.key)); });
+        } catch (_) {}
+        return set;
+    }
+
+    // 番号を占有（トランザクションで競合も防ぐ）。'ok'|'taken'|'error' を返す。
+    async _claimJumboNumber(drawId, number, ticketId) {
+        const ref = this.bankDb.ref('jumboNumbers/' + drawId + '/' + number);
+        let reason = null;
+        try {
+            const res = await ref.transaction(cur => {
+                if (cur) { reason = 'taken'; return; } // 既に占有済み → 中止
+                return ticketId;
+            });
+            if (res.committed) return 'ok';
+            return reason === 'taken' ? 'taken' : 'error';
+        } catch (_) { return 'error'; }
+    }
+
+    // 占有を解放（購入失敗時のロールバック用）。
+    async _releaseJumboNumber(drawId, number) {
+        try { await this.bankDb.ref('jumboNumbers/' + drawId + '/' + number).set(null); } catch (_) {}
+    }
+
+    // まだ購入されていない番号を1つ返す（完売なら null）。
+    //  taken を渡せば再取得を省略できる（一括処理などで利用）。
+    async _pickFreeJumboNumber(draw, taken) {
+        const id = draw.id || draw._key;
+        taken = taken || await this._jumboTakenSet(id);
+        const capacity = Math.pow(10, draw.digits);
+        if (taken.size >= capacity) return null; // 完売
+        // まず乱数で試し、ダメなら順送りで空きを探す
+        for (let a = 0; a < 60; a++) {
+            const s = this._randomDigits(draw.digits);
+            if (!taken.has(s)) return s;
+        }
+        const start = Math.floor(Math.random() * capacity);
+        for (let k = 0; k < capacity; k++) {
+            const s = String((start + k) % capacity).padStart(draw.digits, '0');
+            if (!taken.has(s)) return s;
+        }
+        return null;
+    }
+
+    // =====================================================
     // ギャンブル — ハブ
     // =====================================================
     _openGamble() {
@@ -1750,11 +1806,17 @@ class LinkUpNetBank {
             });
         });
         this.els.jumboList.querySelectorAll('[data-rand]').forEach(btn => {
-            btn.addEventListener('click', () => {
+            btn.addEventListener('click', async () => {
                 const id = btn.dataset.rand;
                 const draw = (this._jumboDraws || []).find(x => (x.id || x._key) === id);
                 const inp = this.els.jumboList.querySelector(`input[data-num="${id}"]`);
-                if (draw && inp) inp.value = this._randomDigits(draw.digits);
+                if (!draw || !inp) return;
+                btn.disabled = true;
+                try {
+                    const n = await this._pickFreeJumboNumber(draw);
+                    if (n == null) { this._toast('この宝くじは完売（全番号が購入済み）です', 'error'); return; }
+                    inp.value = n;
+                } finally { btn.disabled = false; }
             });
         });
         this.els.jumboList.querySelectorAll('[data-bulkset]').forEach(btn => {
@@ -1910,27 +1972,38 @@ class LinkUpNetBank {
         if (!this.account || this.account.frozen) return this._toast('口座が凍結されています', 'error');
         if ((this.account.balance || 0) < draw.ticketPrice) return this._toast('残高が足りません', 'error');
 
+        // 旧データ含む既存券をスキャンして重複を先に弾く
+        const taken = await this._jumboTakenSet(id);
+        if (taken.has(number)) return this._toast(`番号 ${number} は既に購入されています`, 'error');
+
         const ok = await this._confirm(`「${draw.name}」を番号 ${number} で 1口（${this._fmt(draw.ticketPrice)} W）購入しますか？`);
         if (!ok) return;
 
         const tRef = this.bankDb.ref('jumboTickets/' + id).push();
         const tKey = tRef.key;
 
+        // 番号を占有（同時購入の競合もここで防ぐ）
+        const claim = await this._claimJumboNumber(id, number, tKey);
+        if (claim === 'taken') return this._toast(`番号 ${number} は既に購入されています`, 'error');
+        if (claim !== 'ok') return this._toast('購入に失敗しました', 'error');
+
         const staked = await this._collectStake(draw.ticketPrice, `${draw.name} 購入(${number})`, 'jumbo');
-        if (!staked) return this._toast('購入に失敗しました', 'error');
+        if (!staked) { await this._releaseJumboNumber(id, number); return this._toast('購入に失敗しました', 'error'); }
 
         try {
-            await tRef.set({ id: tKey, drawId: id, uid: this.uid, name: this.name, number, ts: Date.now() });
+            await tRef.set({ id: tKey, drawId: id, uid: this.uid, name: this.name, number, price: draw.ticketPrice, ts: Date.now() });
             this._toast(`購入しました（番号 ${number}）`, 'success');
             this._renderJumbo();
         } catch (e) {
-            // 券の発行に失敗 → 掛け金を返金
+            // 券の発行に失敗 → 占有解放＋掛け金を返金
+            await this._releaseJumboNumber(id, number);
             try { const h = await this._houseAccount(); if (h) await this._payFromSource(h, this.uid, this.name, draw.ticketPrice, 'jumbo', `${draw.name} 返金`); } catch (_) {}
             this._toast('購入に失敗しました。返金しました。', 'error');
         }
     }
 
     // おまかせ一括購入（ランダムな番号で複数口を一度に・上限1000）
+    //  ※ 既存の番号・バッチ内重複を避け、ユニークな番号だけを発行する
     async _buyJumboBulk(draw, qtyRaw) {
         const id = draw.id || draw._key;
         if (draw.status !== 'open') return this._toast('この宝くじは販売していません', 'error');
@@ -1938,31 +2011,63 @@ class LinkUpNetBank {
         if (!Number.isFinite(qty) || qty < 1) qty = 1;
         qty = Math.min(1000, qty);
         if (!this.account || this.account.frozen) return this._toast('口座が凍結されています', 'error');
+
+        // 既存の番号を把握し、残り在庫を計算
+        const taken = await this._jumboTakenSet(id);
+        const capacity = Math.pow(10, draw.digits);
+        const available = capacity - taken.size;
+        if (available <= 0) return this._toast('この宝くじは完売（全番号が購入済み）です', 'error');
+        if (qty > available) {
+            qty = available;
+            this._toast(`残り ${this._fmt(available)} 口のみ購入できます`, 'info', 4000);
+        }
+
+        // ユニークな番号を qty 個生成（まず乱数、足りなければ順送りで補完）
+        const picked = new Set();
+        const maxAttempts = qty * 40 + 200;
+        for (let a = 0; picked.size < qty && a < maxAttempts; a++) {
+            const s = this._randomDigits(draw.digits);
+            if (!taken.has(s) && !picked.has(s)) picked.add(s);
+        }
+        if (picked.size < qty) {
+            const start = Math.floor(Math.random() * capacity);
+            for (let k = 0; k < capacity && picked.size < qty; k++) {
+                const s = String((start + k) % capacity).padStart(draw.digits, '0');
+                if (!taken.has(s) && !picked.has(s)) picked.add(s);
+            }
+        }
+        const numbers = [...picked];
+        qty = numbers.length;
+        if (qty < 1) return this._toast('購入できる番号がありません', 'error');
+
         const total = draw.ticketPrice * qty;
         if ((this.account.balance || 0) < total) return this._toast(`残高が足りません（${this._fmt(total)} W 必要）`, 'error');
 
-        const ok = await this._confirm(`「${draw.name}」をおまかせ（ランダム番号）で ${qty}口、合計 ${this._fmt(total)} W で購入しますか？`);
+        const ok = await this._confirm(`「${draw.name}」をおまかせ（ランダム番号・重複なし）で ${qty}口、合計 ${this._fmt(total)} W で購入しますか？`);
         if (!ok) return;
 
-        // 券をまとめて生成（プッシュキーはクライアントで採番し、1回のupdateで書き込む）
+        // 券と番号占有を1回の原子的 update でまとめて書き込む。
+        //  → 途中で他者が同じ番号を取っていた場合はルール違反で全体が失敗 → 返金。
         const base = this.bankDb.ref('jumboTickets/' + id);
         const updates = {};
-        for (let i = 0; i < qty; i++) {
+        const ts = Date.now();
+        for (const number of numbers) {
             const key = base.push().key;
-            updates[key] = { id: key, drawId: id, uid: this.uid, name: this.name, number: this._randomDigits(draw.digits), ts: Date.now() };
+            updates['jumboTickets/' + id + '/' + key] = { id: key, drawId: id, uid: this.uid, name: this.name, number, price: draw.ticketPrice, ts };
+            updates['jumboNumbers/' + id + '/' + number] = key;
         }
 
         const staked = await this._collectStake(total, `${draw.name} おまかせ${qty}口`, 'jumbo');
         if (!staked) return this._toast('購入に失敗しました', 'error');
 
         try {
-            await base.update(updates);
+            await this.bankDb.ref().update(updates);
             this._toast(`おまかせで ${qty}口 購入しました`, 'success', 4000);
             this._renderJumbo();
         } catch (e) {
-            // 失敗時は掛け金を返金
+            // 失敗時は掛け金を返金（原子的 update なので券・占有は書き込まれていない）
             try { const h = await this._houseAccount(); if (h) await this._payFromSource(h, this.uid, this.name, total, 'jumbo', `${draw.name} 返金`); } catch (_) {}
-            this._toast('購入に失敗しました。返金しました。', 'error');
+            this._toast('購入に失敗しました（番号が競合した可能性）。返金しました。', 'error');
         }
     }
     // =====================================================
@@ -1980,6 +2085,7 @@ class LinkUpNetBank {
                 const statusLabel = drawn ? '抽選済み' : closed ? '販売終了' : '販売中';
                 let actions = '';
                 actions += `<button class="acct__freeze" data-jedit="${this._esc(id)}">金額変更</button>`;
+                actions += `<button class="acct__freeze" data-jdedupe="${this._esc(id)}">重複を整理</button>`;
                 if (!drawn) {
                     if (!closed) actions += `<button class="acct__freeze" data-jclose="${this._esc(id)}">販売終了</button>`;
                     actions += `<button class="acct__btn" data-jdraw="${this._esc(id)}">当選番号を確定</button>`;
@@ -1998,6 +2104,7 @@ class LinkUpNetBank {
             this.els.adminJumboList.querySelectorAll('[data-jclose]').forEach(b => b.addEventListener('click', () => this._closeJumboSales(b.dataset.jclose)));
             this.els.adminJumboList.querySelectorAll('[data-jview]').forEach(b => b.addEventListener('click', () => { this._closeModals(); this._openJumbo(); }));
             this.els.adminJumboList.querySelectorAll('[data-jedit]').forEach(b => b.addEventListener('click', () => this._openJumboEdit(b.dataset.jedit)));
+            this.els.adminJumboList.querySelectorAll('[data-jdedupe]').forEach(b => b.addEventListener('click', () => this._dedupeJumbo(b.dataset.jdedupe)));
         });
     }
 
@@ -2141,6 +2248,93 @@ class LinkUpNetBank {
         if (!ok) return;
         try { await this.bankDb.ref('jumbo/' + id + '/status').set('closed'); this._toast('販売を終了しました', 'success'); }
         catch (_) { this._toast('変更できませんでした', 'error'); }
+    }
+
+    // 既存の重複番号を整理：同じ番号の券が2枚以上ある場合、
+    //  その番号の券をすべて削除し、各保有者へ返金する。（他アカウント含む）
+    //  1枚だけの番号は占有インデックスへ補完し、以後の重複を防ぐ。
+    async _dedupeJumbo(drawId) {
+        if (!this._isAdmin()) return this._toast('管理者のみ利用できます', 'error');
+        const draw = (this._adminJumbo || this._jumboDraws || []).find(x => (x.id || x._key) === drawId);
+        if (!draw) return this._toast('対象の宝くじが見つかりません', 'error');
+
+        let snap;
+        try { snap = await this.bankDb.ref('jumboTickets/' + drawId).get(); }
+        catch (_) { return this._toast('券の読み込みに失敗しました', 'error'); }
+
+        // 番号でグループ化
+        const groups = {};   // number -> [{key, uid, name, price}]
+        if (snap && snap.exists()) {
+            snap.forEach(ch => {
+                const t = ch.val(); if (!t || t.number == null) return;
+                const num = String(t.number);
+                (groups[num] = groups[num] || []).push({
+                    key: ch.key, uid: t.uid, name: t.name,
+                    price: (typeof t.price === 'number' ? t.price : draw.ticketPrice)
+                });
+            });
+        }
+        const dupNumbers = Object.keys(groups).filter(n => groups[n].length >= 2);
+        const singles = {};
+        Object.keys(groups).forEach(n => { if (groups[n].length === 1) singles[n] = groups[n][0].key; });
+
+        if (dupNumbers.length === 0) {
+            await this._backfillJumboIndex(drawId, singles);
+            return this._toast('重複はありませんでした（番号インデックスを整備しました）', 'success', 4000);
+        }
+
+        let dupTickets = 0, refundTotal = 0;
+        dupNumbers.forEach(n => groups[n].forEach(t => { dupTickets++; refundTotal += Math.floor(t.price || 0); }));
+
+        const ok = await this._confirm(
+            `「${draw.name}」で重複している番号が ${dupNumbers.length} 件あります。\n` +
+            `対象の券 ${dupTickets} 枚をすべて削除し、各保有者へ合計 ${this._fmt(refundTotal)} W を返金します。\n` +
+            `よろしいですか？（この操作は取り消せません）`
+        );
+        if (!ok) return;
+
+        // 1) 先に券と番号占有を削除（原子的）。→ 再実行による二重返金を防ぐ。
+        const del = {};
+        dupNumbers.forEach(n => {
+            groups[n].forEach(t => { del['jumboTickets/' + drawId + '/' + t.key] = null; });
+            del['jumboNumbers/' + drawId + '/' + n] = null;
+        });
+        try { await this.bankDb.ref().update(del); }
+        catch (e) { return this._toast('削除に失敗しました。中止しました（返金は行っていません）', 'error', 5000); }
+
+        // 2) 削除済みの各保有者へ返金（運営→不足分は中央銀行）
+        let failed = 0;
+        for (const n of dupNumbers) {
+            for (const t of groups[n]) {
+                const amt = Math.floor(t.price || 0);
+                if (amt <= 0 || !t.uid) continue;
+                try {
+                    const paid = await this._payPrize(t.uid, t.name || t.uid, amt, 'jumbo', `${draw.name} 重複返金(${n})`);
+                    if (paid < amt) failed++;
+                } catch (_) { failed++; }
+            }
+        }
+
+        // 3) 残った1枚だけの番号を占有インデックスへ補完
+        await this._backfillJumboIndex(drawId, singles);
+
+        this._renderJumbo();
+        const warn = failed > 0 ? `（返金 ${failed} 件は残高不足等で未完了）` : '';
+        this._toast(`重複 ${dupNumbers.length} 番号・${dupTickets} 枚を削除し返金しました${warn}`, 'success', 5000);
+    }
+
+    // 1枚だけ存在する番号を占有インデックスへ書き込む（空きスロットのみ）。
+    async _backfillJumboIndex(drawId, singles) {
+        if (!singles || Object.keys(singles).length === 0) return;
+        const existing = {};
+        try {
+            const isnap = await this.bankDb.ref('jumboNumbers/' + drawId).get();
+            if (isnap.exists()) isnap.forEach(ch => { existing[ch.key] = true; });
+        } catch (_) {}
+        const updates = {};
+        Object.keys(singles).forEach(n => { if (!existing[n]) updates['jumboNumbers/' + drawId + '/' + n] = singles[n]; });
+        if (Object.keys(updates).length === 0) return;
+        try { await this.bankDb.ref().update(updates); } catch (_) {}
     }
 }
 

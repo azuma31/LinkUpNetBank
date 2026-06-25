@@ -241,11 +241,11 @@ b { font-weight: 600; }
 .admin-block { margin-bottom:26px; }
 .admin-block__title { font-family:var(--display); font-size:.95rem; margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid var(--line); }
 .acct-list { list-style:none; display:flex; flex-direction:column; gap:8px; }
-.acct { display:flex; align-items:center; gap:12px; background:var(--surface-2); border:1px solid var(--line); border-radius:var(--r-sm); padding:11px 13px; }
-.acct__main { flex:1; min-width:0; }
+.acct { display:flex; align-items:center; flex-wrap:wrap; gap:12px; background:var(--surface-2); border:1px solid var(--line); border-radius:var(--r-sm); padding:11px 13px; }
+.acct__main { flex:1 1 150px; min-width:0; }
 .acct__name { font-weight:600; font-size:.9rem; }
 .acct__bal { font-family:var(--num); font-size:.76rem; color:var(--muted); font-variant-numeric:tabular-nums; }
-.acct__freeze { background:var(--surface); border:1px solid var(--line-2); color:var(--ink-soft); border-radius:999px; padding:6px 14px; font:inherit; font-size:.78rem; font-weight:600; cursor:pointer; }
+.acct__freeze { background:var(--surface); border:1px solid var(--line-2); color:var(--ink-soft); border-radius:999px; padding:6px 14px; font:inherit; font-size:.78rem; font-weight:600; cursor:pointer; white-space:nowrap; }
 .acct__freeze:hover { border-color:var(--ink); }
 .acct--frozen { opacity:.7; }
 .acct--frozen .acct__freeze { color:var(--debit); border-color:rgba(220,43,43,.35); }
@@ -422,10 +422,10 @@ b { font-weight: 600; }
 .suggest-empty { padding: 14px 12px; text-align: center; color: var(--faint); font-size: .85rem; }
 
 /* 管理: 口座行のアクション（残高変更 / 凍結） */
-.acct__actions { display: flex; gap: 8px; flex: none; }
+.acct__actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .acct__btn {
     background: var(--ink); color: #fff; border: 1px solid var(--ink);
-    border-radius: 999px; padding: 6px 13px; font: inherit; font-size: .78rem; font-weight: 600; cursor: pointer;
+    border-radius: 999px; padding: 6px 13px; font: inherit; font-size: .78rem; font-weight: 600; cursor: pointer; white-space: nowrap;
 }
 .acct__btn:hover { background: #000; }
 .edit-target { color: var(--muted); font-size: .9rem; margin-bottom: 16px; }
