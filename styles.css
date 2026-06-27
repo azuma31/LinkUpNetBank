@@ -431,6 +431,11 @@ b { font-weight: 600; }
 .edit-target { color: var(--muted); font-size: .9rem; margin-bottom: 16px; }
 .edit-target b { color: var(--ink); font-weight: 600; }
 
+.mc-link-code { margin-top: 12px; padding: 14px; border: 1px dashed var(--line-2); border-radius: var(--r-sm); background: var(--surface); text-align: center; }
+.mc-link-code__code { font-family: var(--num); font-size: 1.6rem; font-weight: 700; letter-spacing: .18em; color: var(--ink); }
+.mc-link-code__hint { margin-top: 8px; font-size: .78rem; color: var(--muted); }
+.mc-link-code__hint b { color: var(--ink); font-weight: 600; }
+
 /* =====================================================
    複数アカウント切り替え
    ===================================================== */
@@ -548,9 +553,24 @@ b { font-weight: 600; }
 .qo-tier__pct { font-family:var(--num); color:var(--faint); text-align:right; font-size:.82rem; }
 
 /* ジャンボ宝くじ */
-.jb-list { list-style:none; display:flex; flex-direction:column; gap:14px; }
+.jb-list { list-style:none; display:flex; flex-direction:column; gap:10px; }
 .jb-card { background:var(--surface); border:1px solid var(--line); border-radius:var(--r); padding:16px; box-shadow:var(--sh-1); }
-.jb-card__head { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+
+/* コンパクトな折りたたみリスト行 */
+.jb-item { list-style:none; }
+.jb-d { background:var(--surface); border:1px solid var(--line); border-radius:var(--r); box-shadow:var(--sh-1); overflow:hidden; }
+.jb-row { display:flex; align-items:center; gap:12px; padding:13px 15px; cursor:pointer; list-style:none; user-select:none; }
+.jb-row::-webkit-details-marker { display:none; }
+.jb-row__main { flex:1; min-width:0; }
+.jb-row__name { display:block; font-family:var(--display); font-weight:700; font-size:1rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.jb-row__meta { display:block; font-size:.76rem; color:var(--muted); margin-top:3px; }
+.jb-row__mine { color:var(--gold-2); font-weight:600; }
+.jb-row .badge { flex:none; }
+.jb-row::after { content:"\f078"; font-family:"Font Awesome 6 Free"; font-weight:900; font-size:.7rem; color:var(--faint); flex:none; transition:transform .15s; }
+.jb-d[open] > .jb-row::after { transform:rotate(180deg); }
+.jb-d[open] > .jb-row { border-bottom:1px solid var(--line); }
+.jb-d__body { padding:14px 15px 15px; }
+.jb-d__body > .jb-prizes:first-child { margin-top:0; }
 .jb-card__name { font-family:var(--display); font-weight:700; font-size:1.05rem; }
 .jb-card__meta { font-size:.78rem; color:var(--muted); margin-top:4px; }
 .jb-prizes { display:flex; flex-direction:column; gap:6px; margin:12px 0; }

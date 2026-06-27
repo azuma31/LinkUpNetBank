@@ -119,6 +119,7 @@ class LinkUpNetBank {
             // settings
             settingsModal: id('settingsModal'), setAutoLogin: id('setAutoLogin'), setConfirmSend: id('setConfirmSend'),
             setAvatar: id('setAvatar'), setName: id('setName'), setUid: id('setUid'),
+            mcLinkBtn: id('mcLinkBtn'), mcLinkCode: id('mcLinkCode'),
             // confirm / toast
             confirmModal: id('confirmModal'), confirmText: id('confirmText'), confirmOk: id('confirmOk'), confirmCancel: id('confirmCancel'),
             toastStack: id('toastStack'),
@@ -213,6 +214,7 @@ class LinkUpNetBank {
         this.els.setConfirmSend.addEventListener('change', () => {
             this.settings.confirmSend = this.els.setConfirmSend.checked; this._saveSettings();
         });
+        if (this.els.mcLinkBtn) this.els.mcLinkBtn.addEventListener('click', () => this._makeMcLinkCode());
 
         // ギャンブル
         this._bindGambleEvents();
@@ -1287,6 +1289,45 @@ class LinkUpNetBank {
     }
 
     // =====================================================
+    // Minecraft連携（コード発行）
+    //  ※ コード本体は画面にだけ表示し、DBには SHA-256 ハッシュを鍵にして保存する。
+    //    （DBは公開READのため、平文コードを置くと第三者に盗まれて連携を乗っ取られるのを防ぐ）
+    // =====================================================
+    async _makeMcLinkCode() {
+        if (!this.uid) return;
+        const btn = this.els.mcLinkBtn, box = this.els.mcLinkCode;
+        btn.disabled = true;
+        try {
+            const code = this._randomLinkCode(8);
+            const hash = await this._sha256Hex(code);
+            const exp = Date.now() + 10 * 60 * 1000; // 10分間有効
+            await this.bankDb.ref('mcLinkCodes/' + hash).set({ uid: this.uid, name: this.name, exp });
+            box.hidden = false;
+            box.innerHTML =
+                `<div class="mc-link-code__code">${this._esc(code)}</div>` +
+                `<div class="mc-link-code__hint">ゲーム内で <b>!連携 ${this._esc(code)}</b> と入力してください（10分間有効・1回のみ）</div>`;
+        } catch (e) {
+            this._toast('コードを発行できませんでした', 'error');
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
+    _randomLinkCode(n) {
+        const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // 紛らわしい O0 I1 を除外
+        const arr = new Uint32Array(n);
+        crypto.getRandomValues(arr);
+        let s = '';
+        for (let i = 0; i < n; i++) s += chars[arr[i] % chars.length];
+        return s;
+    }
+
+    async _sha256Hex(str) {
+        const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+        return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    // =====================================================
     // UI ヘルパ
     // =====================================================
     _show(el) {
@@ -1912,16 +1953,27 @@ class LinkUpNetBank {
             : closed ? '<span class="badge badge--paused">販売終了</span>'
             : '<span class="badge badge--active">販売中</span>';
 
-        return `<li class="jb-card">
-            <div class="jb-card__head">
-                <span class="jb-card__name">${this._esc(d.name)}</span>
-                ${statusBadge}
-            </div>
-            <div class="jb-card__meta">${d.digits}桁の番号 ・ 1口 ${this._fmt(d.ticketPrice)} W ・ 販売 ${sum.sales}口</div>
-            <div class="jb-prizes">${prizeRows || '<span class="muted-note">賞金は未設定です</span>'}</div>
-            ${buy}
-            ${mine}
-            ${winnersHtml}
+        // 要点だけ行に出し、賞金・購入・当選者は開いてから表示（占有を小さく）
+        const mineTag = sum.myCount > 0
+            ? ` ・ <span class="jb-row__mine">あなた ${sum.myCount}口${(drawn && sum.myWinTotal > 0) ? `（当選${sum.myWinTotal}）` : ''}</span>`
+            : '';
+
+        return `<li class="jb-item">
+            <details class="jb-d">
+                <summary class="jb-row">
+                    <span class="jb-row__main">
+                        <span class="jb-row__name">${this._esc(d.name)}</span>
+                        <span class="jb-row__meta">${d.digits}桁 ・ 1口 ${this._fmt(d.ticketPrice)} W ・ 販売 ${sum.sales}口${mineTag}</span>
+                    </span>
+                    ${statusBadge}
+                </summary>
+                <div class="jb-d__body">
+                    <div class="jb-prizes">${prizeRows || '<span class="muted-note">賞金は未設定です</span>'}</div>
+                    ${buy}
+                    ${mine}
+                    ${winnersHtml}
+                </div>
+            </details>
         </li>`;
     }
 
@@ -2086,6 +2138,7 @@ class LinkUpNetBank {
                 let actions = '';
                 actions += `<button class="acct__freeze" data-jedit="${this._esc(id)}">金額変更</button>`;
                 actions += `<button class="acct__freeze" data-jdedupe="${this._esc(id)}">重複を整理</button>`;
+                actions += `<button class="acct__freeze" data-jrefund="${this._esc(id)}">全口返金</button>`;
                 if (!drawn) {
                     if (!closed) actions += `<button class="acct__freeze" data-jclose="${this._esc(id)}">販売終了</button>`;
                     actions += `<button class="acct__btn" data-jdraw="${this._esc(id)}">当選番号を確定</button>`;
@@ -2105,6 +2158,7 @@ class LinkUpNetBank {
             this.els.adminJumboList.querySelectorAll('[data-jview]').forEach(b => b.addEventListener('click', () => { this._closeModals(); this._openJumbo(); }));
             this.els.adminJumboList.querySelectorAll('[data-jedit]').forEach(b => b.addEventListener('click', () => this._openJumboEdit(b.dataset.jedit)));
             this.els.adminJumboList.querySelectorAll('[data-jdedupe]').forEach(b => b.addEventListener('click', () => this._dedupeJumbo(b.dataset.jdedupe)));
+            this.els.adminJumboList.querySelectorAll('[data-jrefund]').forEach(b => b.addEventListener('click', () => this._refundAllJumbo(b.dataset.jrefund)));
         });
     }
 
@@ -2335,6 +2389,50 @@ class LinkUpNetBank {
         Object.keys(singles).forEach(n => { if (!existing[n]) updates['jumboNumbers/' + drawId + '/' + n] = singles[n]; });
         if (Object.keys(updates).length === 0) return;
         try { await this.bankDb.ref().update(updates); } catch (_) {}
+    }
+
+    // この宝くじの購入済みの券をすべて返金し、削除する（全口返金）。
+    async _refundAllJumbo(drawId) {
+        if (!this._isAdmin()) return this._toast('管理者のみ利用できます', 'error');
+        const draw = (this._adminJumbo || this._jumboDraws || []).find(x => (x.id || x._key) === drawId);
+        if (!draw) return this._toast('対象の宝くじが見つかりません', 'error');
+
+        let snap;
+        try { snap = await this.bankDb.ref('jumboTickets/' + drawId).get(); }
+        catch (_) { return this._toast('券の読み込みに失敗しました', 'error'); }
+
+        const tickets = [];
+        if (snap && snap.exists()) {
+            snap.forEach(ch => {
+                const t = ch.val(); if (!t) return;
+                tickets.push({ key: ch.key, uid: t.uid, name: t.name, price: (typeof t.price === 'number' ? t.price : draw.ticketPrice) });
+            });
+        }
+        if (tickets.length === 0) return this._toast('返金対象の券がありません', 'info');
+
+        const total = tickets.reduce((s, t) => s + Math.floor(t.price || 0), 0);
+        const ok = await this._confirm(
+            `「${draw.name}」の購入済み ${tickets.length}口 をすべて削除し、各購入者へ合計 ${this._fmt(total)} W を返金します。\n` +
+            `よろしいですか？（この操作は取り消せません）`
+        );
+        if (!ok) return;
+
+        // 先に全削除（再実行による二重返金を防ぐ）
+        try { await this.bankDb.ref().update({ ['jumboTickets/' + drawId]: null, ['jumboNumbers/' + drawId]: null }); }
+        catch (e) { return this._toast('削除に失敗しました。中止しました（返金は行っていません）', 'error', 5000); }
+
+        // 各購入者へ返金（運営→不足分は中央銀行）
+        let failed = 0;
+        for (const t of tickets) {
+            const amt = Math.floor(t.price || 0);
+            if (amt <= 0 || !t.uid) continue;
+            try { const paid = await this._payPrize(t.uid, t.name || t.uid, amt, 'jumbo', `${draw.name} 全口返金`); if (paid < amt) failed++; }
+            catch (_) { failed++; }
+        }
+
+        this._renderJumbo();
+        const warn = failed > 0 ? `（返金 ${failed} 件は残高不足等で未完了）` : '';
+        this._toast(`${tickets.length}口を返金・削除しました${warn}`, 'success', 5000);
     }
 }
 
