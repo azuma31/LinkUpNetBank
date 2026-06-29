@@ -129,6 +129,12 @@ class LinkUpNetBank {
             quickoneModal: id('quickoneModal'), quickoneCost: id('quickoneCost'), quickoneBet: id('quickoneBet'),
             quickoneTable: id('quickoneTable'), quickoneResult: id('quickoneResult'), quickonePlay: id('quickonePlay'),
             quickonePrizeNote: id('quickonePrizeNote'),
+            // スロット
+            slotModal: id('slotModal'), slotCost: id('slotCost'), slotBet: id('slotBet'),
+            slotTable: id('slotTable'), slotResult: id('slotResult'), slotPlay: id('slotPlay'),
+            slotPrizeNote: id('slotPrizeNote'),
+            slotReels: [id('slotReel0'), id('slotReel1'), id('slotReel2')],
+            slotStops: [id('slotStop0'), id('slotStop1'), id('slotStop2')],
             // ジャンボ（利用者）
             jumboModal: id('jumboModal'), jumboList: id('jumboList'), jumboEmpty: id('jumboEmpty'),
             jumboTicketsModal: id('jumboTicketsModal'), myTicketsTitle: id('myTicketsTitle'),
@@ -229,6 +235,16 @@ class LinkUpNetBank {
         document.querySelectorAll('.qo-chip').forEach(c => c.addEventListener('click', () => {
             if (this.els.quickoneBet) { this.els.quickoneBet.value = c.dataset.bet; this._updateQuickoneCost(); }
         }));
+        // スロット
+        if (this.els.slotPlay) this.els.slotPlay.addEventListener('click', () => this._playSlot());
+        if (this.els.slotBet) {
+            this.els.slotBet.addEventListener('input', () => this._updateSlotCost());
+            this.els.slotBet.addEventListener('blur', () => { this.els.slotBet.value = this._slotBet(); this._updateSlotCost(); });
+        }
+        document.querySelectorAll('.slot-chip').forEach(c => c.addEventListener('click', () => {
+            if (this.els.slotBet) { this.els.slotBet.value = c.dataset.sbet; this._updateSlotCost(); }
+        }));
+        (this.els.slotStops || []).forEach((b, i) => { if (b) b.addEventListener('click', () => this._stopSlotReel(i)); });
         if (this.els.openJumboCreate) this.els.openJumboCreate.addEventListener('click', () => this._openJumboCreate());
         if (this.els.jcCreate) this.els.jcCreate.addEventListener('click', () => this._createJumboDraw());
         if (this.els.jdConfirm) this.els.jdConfirm.addEventListener('click', () => this._finalizeJumboDraw());
@@ -257,7 +273,7 @@ class LinkUpNetBank {
         else if (a === 'rich') { this._setActiveNav('rich'); this._openRich(); }
         else if (a === 'quickone') this._openQuickone();
         else if (a === 'jumbo') this._openJumbo();
-        else if (a === 'keiba') this._toast('競馬は準備中です（近日公開）', 'info', 3500);
+        else if (a === 'slot') this._openSlot();
         else if (a === 'settings') { this._setActiveNav('settings'); this._openSettings(); }
         else if (a === 'accounts') this._openAccounts();
     }
@@ -1512,7 +1528,7 @@ class LinkUpNetBank {
         let moved = false;
         try { moved = await this._moveFunds(this.uid, h.uid, amount, h.name); } catch (_) { moved = false; }
         if (!moved) return false;
-        if (type !== 'quickone') {
+        if (type !== 'quickone' && type !== 'slot') {
             try {
                 await this._writeLedger({ type, amount, fromUid: this.uid, fromName: this.name, toUid: h.uid, toName: h.name, memo, ts: Date.now() }, this.uid, h.uid);
             } catch (_) {}
@@ -1541,8 +1557,8 @@ class LinkUpNetBank {
         let moved = false;
         try { moved = await this._moveFunds(src.uid, toUid, pay, toName); } catch (_) { moved = false; }
         if (!moved) return want;
-        // QUICKONE は購入も当選も履歴に残さない（残高移動のみ）。ジャンボ等は記録する。
-        if (type !== 'quickone') {
+        // QUICKONE / スロット は購入も当選も履歴に残さない（残高移動のみ）。ジャンボ等は記録する。
+        if (type !== 'quickone' && type !== 'slot') {
             try {
                 await this._writeLedger({ type, amount: pay, fromUid: src.uid, fromName: src.name, toUid, toName, memo, ts: Date.now() }, src.uid, toUid);
             } catch (_) {}
@@ -1759,6 +1775,248 @@ class LinkUpNetBank {
         this._qoPlayed = true;
         this.els.quickonePlay.disabled = false;
         this._updateQuickoneCost();
+        this._refreshHouseChips();
+    }
+
+    // =====================================================
+    // スロット（3リール・自分でストップ式）
+    //  掛け金は「宝くじ運営」へ集め、当選金もそこから支払う（利益は運営に貯まる）。
+    //  QUICKONE 同様、残高移動のみで取引履歴には残さない。
+    //  ※ 出目はスタート時に確定（RNG）。ストップは演出を止めるだけで結果は変わらない
+    //    （= 還元率を一定に保つ。実機の「すべり」と同じ考え方）。
+    // =====================================================
+    _slotCfg() {
+        const def = window.BANK_SLOT || {};
+        const reel = (Array.isArray(def.reel) && def.reel.length) ? def.reel : [
+            { key: 'seven',  emoji: '7️⃣', label: '1等',   weight: 4, three: 13 },
+            { key: 'bell',   emoji: '🔔', label: '2等',   weight: 5, three: 5  },
+            { key: 'cherry', emoji: '🍒', label: '3等',   weight: 6, three: 4  },
+            { key: 'lemon',  emoji: '🍋', label: 'はずれ', weight: 7, three: 0  }
+        ];
+        const pairs = Array.isArray(def.pairs) ? def.pairs : [
+            { key: 'bell', label: '4等', mult: 3 },
+            { key: 'cherry', label: '5等', mult: 2 }
+        ];
+        return { cost: Number.isFinite(def.cost) && def.cost > 0 ? Math.floor(def.cost) : 10, reel, pairs };
+    }
+
+    _slotSym(cfg, key) { return cfg.reel.find(s => s.key === key); }
+
+    // 重み付きで1リール分のシンボルを引く
+    _slotDrawReel(cfg) {
+        const total = cfg.reel.reduce((s, r) => s + (r.weight || 0), 0) || 1;
+        let r = Math.random() * total;
+        for (const sym of cfg.reel) { if (r < (sym.weight || 0)) return sym; r -= (sym.weight || 0); }
+        return cfg.reel[cfg.reel.length - 1];
+    }
+
+    // 演出用：はずれ枠を含めた一様ランダム（くるくる回転中の絵柄）
+    _slotSpinSym(cfg) { return cfg.reel[Math.floor(Math.random() * cfg.reel.length)]; }
+
+    // 役判定：3つ揃い（1〜3等）→ ちょうど2つ揃い（4・5等）の順
+    _slotEvaluate(cfg, symbols) {
+        if (symbols[0].key === symbols[1].key && symbols[1].key === symbols[2].key) {
+            const s = symbols[0]; const m = s.three || 0;
+            if (m > 0) return { mult: m, label: s.label, win: true };
+        }
+        for (const pr of (cfg.pairs || [])) {
+            const cnt = symbols.filter(s => s.key === pr.key).length;
+            if (cnt === 2 && (pr.mult || 0) > 0) return { mult: pr.mult, label: pr.label, win: true };
+        }
+        return { mult: 0, label: 'はずれ', win: false };
+    }
+
+    _slotBet() {
+        let n = parseInt(this.els.slotBet && this.els.slotBet.value, 10);
+        if (!Number.isFinite(n)) n = 1;
+        return Math.max(1, Math.min(1000, n));
+    }
+
+    _openSlot() {
+        const cfg = this._slotCfg();
+        if (this.els.slotCost) this.els.slotCost.textContent = this._fmt(cfg.cost);
+        this._renderSlotTable();
+        this._resetSlotStage();
+        this._show(this.els.slotModal);
+    }
+
+    // 当選役の一覧表（ベット倍率に応じて賞金額が変わる）
+    _renderSlotTable() {
+        if (!this.els.slotTable) return;
+        const cfg = this._slotCfg();
+        const bet = this._slotBet();
+        const total = cfg.reel.reduce((s, r) => s + (r.weight || 0), 0) || 1;
+        const rows = [];
+        // 3つ揃い（1〜3等）
+        cfg.reel.filter(s => (s.three || 0) > 0).forEach(s => {
+            rows.push({
+                label: s.label, icon: s.emoji + s.emoji + s.emoji,
+                mult: s.three, prize: cfg.cost * s.three * bet,
+                pct: Math.pow((s.weight || 0) / total, 3) * 100
+            });
+        });
+        // ちょうど2つ揃い（4・5等）
+        (cfg.pairs || []).forEach(pr => {
+            const sym = this._slotSym(cfg, pr.key); if (!sym) return;
+            const p = (sym.weight || 0) / total;
+            rows.push({
+                label: pr.label, icon: sym.emoji + sym.emoji,
+                mult: pr.mult, prize: cfg.cost * pr.mult * bet,
+                pct: 3 * p * p * (1 - p) * 100
+            });
+        });
+        this.els.slotTable.innerHTML = rows.map(r => {
+            const pctLabel = r.pct.toFixed(2);
+            return `<li class="qo-tier">
+                <span class="qo-tier__rank"><span class="slot-tier__grade">${this._esc(r.label)}</span><span class="slot-tier__icon">${r.icon}</span></span>
+                <span class="qo-tier__mult">${r.mult}倍</span>
+                <span class="qo-tier__prize">${this._fmt(r.prize)} W</span>
+                <span class="qo-tier__pct">${pctLabel}%</span>
+            </li>`;
+        }).join('');
+        if (this.els.slotPrizeNote) {
+            this.els.slotPrizeNote.textContent = bet > 1
+                ? `※ ベット ×${bet} 時の当選金です（掛け金 ${this._fmt(cfg.cost * bet)} W）`
+                : '';
+        }
+    }
+
+    _updateSlotCost() {
+        this._renderSlotTable();
+        if (!this.els.slotPlay || this.els.slotPlay.disabled || this._slotSpinning) return;
+        const cfg = this._slotCfg();
+        const bet = this._slotBet();
+        const total = cfg.cost * bet;
+        const label = bet > 1 ? `×${bet}（${this._fmt(total)} W）` : `${this._fmt(total)} W`;
+        this.els.slotPlay.innerHTML = this._slotPlayed
+            ? `<i class="fa-solid fa-rotate-right"></i> もう一度（${label}）`
+            : `<i class="fa-solid fa-play"></i> ${label} でまわす`;
+    }
+
+    // 1リールの3セル（上・中央＝ペイライン・下）を描画
+    _slotPaintReel(i, midSym, aboveSym, belowSym) {
+        const cfg = this._slotCfg();
+        const reel = (this.els.slotReels || [])[i];
+        if (!reel) return;
+        const cells = reel.querySelectorAll('.slot-cell');
+        const a = aboveSym || this._slotSpinSym(cfg);
+        const b = belowSym || this._slotSpinSym(cfg);
+        if (cells[0]) cells[0].textContent = a.emoji;
+        if (cells[1]) cells[1].textContent = midSym.emoji;
+        if (cells[2]) cells[2].textContent = b.emoji;
+    }
+
+    _slotLockBet(lock) {
+        if (this.els.slotBet) this.els.slotBet.disabled = lock;
+        document.querySelectorAll('.slot-chip').forEach(c => { c.disabled = lock; });
+    }
+
+    _resetSlotStage() {
+        this._slotSpinning = false;
+        this._slotPlayed = this._slotPlayed || false;
+        (this._slotTimers || []).forEach(t => t && clearInterval(t));
+        (this._slotAuto || []).forEach(t => t && clearTimeout(t));
+        this._slotTimers = [null, null, null];
+        this._slotAuto = [null, null, null];
+        this._slotStopped = [true, true, true];
+        this._slotTargets = null;
+        const cfg = this._slotCfg();
+        (this.els.slotReels || []).forEach((reel, i) => {
+            if (!reel) return;
+            reel.classList.remove('is-spinning', 'is-hit', 'is-stop');
+            this._slotPaintReel(i, cfg.reel[0]);
+        });
+        (this.els.slotStops || []).forEach(b => { if (b) b.disabled = true; });
+        if (this.els.slotResult) {
+            this.els.slotResult.className = 'slot-result';
+            this.els.slotResult.innerHTML = `<span class="slot-result__idle"><i class="fa-solid fa-hand-pointer"></i> まわして、自分のタイミングで止めよう</span>`;
+        }
+        if (this.els.slotPlay) this.els.slotPlay.disabled = false;
+        this._slotLockBet(false);
+        this._updateSlotCost();
+    }
+
+    // スタート：掛け金回収 → 出目確定 → 全リール回転 → STOP 待ち
+    async _playSlot() {
+        if (this._slotSpinning) return;
+        const cfg = this._slotCfg();
+        const bet = this._slotBet();
+        const stake = cfg.cost * bet;
+        if (this.els.slotBet) this.els.slotBet.value = bet;
+        if (!this.account || this.account.frozen) return this._toast('口座が凍結されています', 'error');
+        if ((this.account.balance || 0) < stake) return this._toast(`残高が足りません（${this._fmt(stake)} W 必要）`, 'error');
+
+        this.els.slotPlay.disabled = true;
+        this._slotLockBet(true);
+
+        // 掛け金を回収（履歴には残さない）
+        const staked = await this._collectStake(stake, 'スロット 購入', 'slot');
+        if (!staked) { this._toast('購入処理に失敗しました。もう一度お試しください。', 'error'); this._resetSlotStage(); return; }
+
+        // 出目を確定（RNG）。ストップ操作では変わらない。
+        this._slotTargets = [this._slotDrawReel(cfg), this._slotDrawReel(cfg), this._slotDrawReel(cfg)];
+        this._slotStopped = [false, false, false];
+        this._slotSpinning = true;
+
+        this.els.slotResult.className = 'slot-result is-spinning';
+        this.els.slotResult.innerHTML = `<span class="slot-result__spin">STOP で止めて！</span>`;
+
+        const reels = this.els.slotReels || [];
+        this._slotTimers = [null, null, null];
+        this._slotAuto = [null, null, null];
+        for (let i = 0; i < 3; i++) {
+            if (reels[i]) reels[i].classList.add('is-spinning');
+            if (this.els.slotStops[i]) this.els.slotStops[i].disabled = false;
+            this._slotTimers[i] = setInterval(() => this._slotPaintReel(i, this._slotSpinSym(cfg)), 55);
+            // 放置対策：12秒で自動ストップ
+            this._slotAuto[i] = setTimeout(() => this._stopSlotReel(i), 12000);
+        }
+    }
+
+    // 1リールを止める（クリック or 自動）
+    _stopSlotReel(i) {
+        if (!this._slotSpinning || !this._slotStopped || this._slotStopped[i]) return;
+        clearInterval(this._slotTimers[i]); this._slotTimers[i] = null;
+        clearTimeout(this._slotAuto[i]); this._slotAuto[i] = null;
+        this._slotStopped[i] = true;
+        const reel = (this.els.slotReels || [])[i];
+        if (reel) { reel.classList.remove('is-spinning'); reel.classList.add('is-stop'); setTimeout(() => reel && reel.classList.remove('is-stop'), 280); }
+        this._slotPaintReel(i, this._slotTargets[i]); // 中央＝確定シンボル、上下はランダム
+        if (this.els.slotStops[i]) this.els.slotStops[i].disabled = true;
+        if (this._slotStopped.every(Boolean)) this._finishSlot();
+    }
+
+    // 全リール停止後：判定・支払い
+    async _finishSlot() {
+        this._slotSpinning = false;
+        const cfg = this._slotCfg();
+        const bet = this._slotBet();
+        const stake = cfg.cost * bet;
+        const symbols = this._slotTargets || [];
+        const res = this._slotEvaluate(cfg, symbols);
+        const prize = res.win ? cfg.cost * res.mult * bet : 0;
+        let paid = 0;
+        if (prize > 0) paid = await this._payPrize(this.uid, this.name, prize, 'slot', `スロット ${res.label}`);
+
+        const betLabel = bet > 1 ? `<span class="slot-result__sub">ベット ×${bet} ・ 掛け金 ${this._fmt(stake)} W</span>` : '';
+        const reels = this.els.slotReels || [];
+        if (prize > 0) {
+            reels.forEach(r => r && r.classList.add('is-hit'));
+            this.els.slotResult.className = 'slot-result is-win';
+            this.els.slotResult.innerHTML =
+                `<span class="slot-result__rank">${this._esc(res.label)} 当選！</span>
+                 <span class="slot-result__amt">+${this._fmt(paid)} W</span>${betLabel}`;
+            if (paid < prize) this._toast('運営の残高が不足し、一部のみの支払いです。管理者に連絡してください。', 'error', 5000);
+            else this._toast(`${res.label} 当選！ +${this._fmt(paid)} W`, 'success', 4000);
+        } else {
+            this.els.slotResult.className = 'slot-result is-lose';
+            this.els.slotResult.innerHTML = `<span class="slot-result__rank">はずれ</span>${betLabel || '<span class="slot-result__sub">また挑戦してね</span>'}`;
+        }
+
+        this._slotPlayed = true;
+        this.els.slotPlay.disabled = false;
+        this._slotLockBet(false);
+        this._updateSlotCost();
         this._refreshHouseChips();
     }
 

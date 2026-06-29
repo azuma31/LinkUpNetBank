@@ -432,10 +432,10 @@
                     <span class="gamble-card__name">ジャンボ宝くじ</span>
                     <span class="gamble-card__desc">管理者開催の大規模宝くじ。番号を選んで購入、抽選で当選！</span>
                 </button>
-                <button class="gamble-card gamble-card--soon" data-action="keiba">
-                    <span class="gamble-card__ic"><i class="fa-solid fa-horse"></i></span>
-                    <span class="gamble-card__name">競馬 <span class="gamble-card__tag">準備中</span></span>
-                    <span class="gamble-card__desc">レース映像のライブ／アーカイブ配信に対応予定（近日公開）。</span>
+                <button class="gamble-card gamble-card--slot" data-action="slot">
+                    <span class="gamble-card__ic"><i class="fa-solid fa-7"></i></span>
+                    <span class="gamble-card__name">スロット</span>
+                    <span class="gamble-card__desc">3つのリールを自分のタイミングでストップ！1等〜5等まで、よく当たる。</span>
                 </button>
             </div>
             <p id="gambleHouseInfo" class="gamble-house"></p>
@@ -466,6 +466,53 @@
             <div class="qo-tablehead"><span>当選</span><span>倍率</span><span>賞金</span><span>確率</span></div>
             <ul id="quickoneTable" class="qo-table"></ul>
             <p id="quickonePrizeNote" class="qo-prizenote"></p>
+        </div>
+    </div>
+</div>
+
+<!-- ===================== スロット ===================== -->
+<div id="slotModal" class="modal" hidden>
+    <div class="modal__panel">
+        <div class="modal__head"><h3><i class="fa-solid fa-7"></i> スロット</h3><button class="icon-btn modal__close" data-close><i class="fa-solid fa-xmark"></i></button></div>
+        <div class="modal__body">
+            <div class="slot-cabinet">
+                <div class="slot-cabinet__marquee">
+                    <span class="slot-lights"></span>
+                    <span class="slot-cabinet__title">LINKUP SLOT</span>
+                    <span class="slot-lights"></span>
+                </div>
+                <div class="slot-window">
+                    <span class="slot-payline" aria-hidden="true"></span>
+                    <div class="slot-reels" id="slotReels">
+                        <div class="slot-reel" id="slotReel0"><div class="slot-strip"><span class="slot-cell"></span><span class="slot-cell"></span><span class="slot-cell"></span></div></div>
+                        <div class="slot-reel" id="slotReel1"><div class="slot-strip"><span class="slot-cell"></span><span class="slot-cell"></span><span class="slot-cell"></span></div></div>
+                        <div class="slot-reel" id="slotReel2"><div class="slot-strip"><span class="slot-cell"></span><span class="slot-cell"></span><span class="slot-cell"></span></div></div>
+                    </div>
+                </div>
+                <div class="slot-stops">
+                    <button type="button" class="slot-stop" id="slotStop0" disabled>STOP</button>
+                    <button type="button" class="slot-stop" id="slotStop1" disabled>STOP</button>
+                    <button type="button" class="slot-stop" id="slotStop2" disabled>STOP</button>
+                </div>
+            </div>
+            <div id="slotResult" class="slot-result"><span class="slot-result__idle"><i class="fa-solid fa-hand-pointer"></i> まわして、自分のタイミングで止めよう</span></div>
+            <div class="qo-qty">
+                <label for="slotBet">ベット倍率（最大 ×1000）</label>
+                <div class="qo-qty__row">
+                    <input id="slotBet" type="number" min="1" max="1000" step="1" value="1" inputmode="numeric">
+                    <div class="qo-qty__chips">
+                        <button type="button" class="slot-chip" data-sbet="1">×1</button>
+                        <button type="button" class="slot-chip" data-sbet="10">×10</button>
+                        <button type="button" class="slot-chip" data-sbet="100">×100</button>
+                        <button type="button" class="slot-chip" data-sbet="1000">×1000</button>
+                    </div>
+                </div>
+            </div>
+            <button id="slotPlay" class="btn btn--primary btn--block qo-play"></button>
+            <p class="muted-note" style="text-align:center;margin-top:10px">基本 1回 <b id="slotCost">—</b> W ・ ベット倍率に応じて掛け金と当選金が増えます</p>
+            <div class="qo-tablehead"><span>役</span><span>倍率</span><span>賞金</span><span>確率</span></div>
+            <ul id="slotTable" class="qo-table"></ul>
+            <p id="slotPrizeNote" class="qo-prizenote"></p>
         </div>
     </div>
 </div>
